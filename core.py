@@ -498,14 +498,21 @@ class UDIDownloader:
             else:
                 merged_df = pd.concat([merged_df] + batch, ignore_index=True)
 
-        # 排序
+        # 排序（带进度）
         if merged_df is not None and "deviceRecordKey" in merged_df.columns:
-            print("[排序] 按 deviceRecordKey 排序...")
-            merged_df = merged_df.sort_values("deviceRecordKey")
+            total_records = len(merged_df)
+            print(f"\n[排序] 按 deviceRecordKey 排序 {total_records:,} 条记录...")
+            with tqdm(
+                total=100, desc="排序进度", bar_format="{l_bar}{bar}| {n_fmt}%"
+            ) as pbar:
+                # 排序是原子操作，分阶段显示进度
+                pbar.update(10)
+                merged_df = merged_df.sort_values("deviceRecordKey")
+                pbar.update(90)
 
         elapsed = time.time() - start_time
         total_records = len(merged_df) if merged_df is not None else 0
-        print(f"[合并完成] 共 {total_records} 条记录，耗时 {elapsed:.1f}s")
+        print(f"[合并完成] 共 {total_records:,} 条记录，耗时 {elapsed:.1f}s")
 
         if merged_df is None:
             return None
@@ -535,7 +542,9 @@ class UDIDownloader:
         return success
 
     def _save_to_file(self, df: pd.DataFrame, identifier: str) -> str:
+        """保存数据到本地文件（带进度条）"""
         import time
+        from tqdm import tqdm
 
         os.makedirs(DOWNLOAD_DIR, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -549,12 +558,36 @@ class UDIDownloader:
             filename = f"udid_{self.data_type}_{identifier}_{timestamp}.xlsx"
             filepath = os.path.join(DOWNLOAD_DIR, filename)
             print(f"[保存] 格式: Excel, 文件: {filename}")
-            df.to_excel(filepath, index=False, engine="openpyxl")
+
+            # Excel写入进度
+            with tqdm(
+                total=100, desc="写入进度", bar_format="{l_bar}{bar}| {n_fmt}%"
+            ) as pbar:
+                pbar.update(20)
+                df.to_excel(filepath, index=False, engine="openpyxl")
+                pbar.update(80)
         else:
             filename = f"udid_{self.data_type}_{identifier}_{timestamp}.csv"
             filepath = os.path.join(DOWNLOAD_DIR, filename)
             print(f"[保存] 格式: CSV, 文件: {filename}")
-            df.to_csv(filepath, index=False, encoding="utf-8")
+
+            # CSV分块写入进度
+            chunk_size = max(1, total_records // 100)
+            chunks = range(0, total_records, chunk_size)
+
+            with tqdm(total=total_records, desc="写入进度", unit="行") as pbar:
+                first_chunk = True
+                for i in chunks:
+                    chunk_df = df.iloc[i : i + chunk_size]
+                    chunk_df.to_csv(
+                        filepath,
+                        mode="a",
+                        header=first_chunk,
+                        index=False,
+                        encoding="utf-8",
+                    )
+                    first_chunk = False
+                    pbar.update(len(chunk_df))
 
         elapsed = time.time() - start_time
 
