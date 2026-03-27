@@ -9,6 +9,11 @@ ENV/
 env/
 .venv/
 
+# PyInstaller
+build/
+dist/
+*.spec
+
 # Data
 downloads/
 downloads_monthly/

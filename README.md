@@ -7,6 +7,60 @@
 - **日度数据 (udid_daq_daily.py)**: 命令行下载每日增量数据
 - **月度数据 (udid_daq_monthly.py)**: 命令行下载月度数据，自动合并为单个文件
 
+---
+
+## Windows 可执行文件下载
+
+无需安装Python，直接下载exe文件即可运行！
+
+### 下载地址
+
+前往 [Releases 页面](https://github.com/geekerxu/udid_daq/releases) 下载最新版本的exe文件：
+
+| 文件名 | 说明 | 使用场景 |
+|--------|------|----------|
+| `udid_daq_interactive.exe` | 交互式图形界面 | 推荐新手使用，双击即可运行 |
+| `udid_daq_daily.exe` | 日度数据命令行工具 | 下载每日增量数据 |
+| `udid_daq_monthly.exe` | 月度数据命令行工具 | 下载并合并月度数据 |
+
+### exe 文件使用
+
+#### 交互式版本
+```
+双击 udid_daq_interactive.exe 直接运行
+```
+
+#### 命令行版本
+```cmd
+# 列出可用日期
+udid_daq_daily.exe -l
+
+# 下载最新数据
+udid_daq_daily.exe
+
+# 下载指定日期
+udid_daq_daily.exe -d 20260325
+```
+
+```cmd
+# 列出可用月份
+udid_daq_monthly.exe -l
+
+# 下载最新月份
+udid_daq_monthly.exe
+
+# 下载指定月份
+udid_daq_monthly.exe -m 202601
+```
+
+### 注意事项
+
+- exe 文件较大（约 39MB），因为包含了完整的 Python 运行时
+- 部分杀毒软件可能会误报，建议将 exe 添加到白名单
+- 数据下载后保存在程序所在目录的 `downloads` 或 `downloads_monthly` 文件夹中
+
+---
+
 ## 环境依赖
 
 ### Python 版本
