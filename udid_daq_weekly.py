@@ -1,250 +1,119 @@
-import feedparser
-import requests
-import zipfile
-import io
-import os
+# -*- coding: utf-8 -*-
+"""
+UDI 周度数据下载工具
+====================
+
+从 NMPA UDI 数据库下载周度汇总数据（自动合并 7 个日度包）。
+
+用法:
+    python udid_daq_weekly.py              # 下载最新周度数据
+    python udid_daq_weekly.py -l           # 列出可用周期
+    python udid_daq_weekly.py -d 20260322  # 下载指定周期（结束日期）
+    python udid_daq_weekly.py -a           # 下载所有可用周期
+    python udid_daq_weekly.py --excel      # 输出 Excel 格式
+    python udid_daq_weekly.py --db oracle  # 写入数据库
+
+作者: geekerxu
+版本: 3.0.0
+"""
+
+# ============================================================================
+# 编码设置
+# ============================================================================
+from core import setup_encoding
+
+setup_encoding()
+
+# ============================================================================
+# 标准库导入
+# ============================================================================
 import argparse
-from datetime import datetime
+
+# ============================================================================
+# 本地模块导入
+# ============================================================================
+from core import UDIDownloader, ensure_download_dir, print_completion
 
 
-RSS_URL = "https://udi.nmpa.gov.cn/rss/download.html?files=weekly"
-DOWNLOAD_DIR = "downloads_weekly"
-
-on_data_parsed_callback = None
-
-
-def set_data_callback(callback):
-    """设置数据解析完成后的回调函数"""
-    global on_data_parsed_callback
-    on_data_parsed_callback = callback
-
-
-def parse_rss():
-    """解析RSS订阅，获取所有可用的下载链接"""
-    print(f"正在解析RSS: {RSS_URL}")
-    feed = feedparser.parse(RSS_URL)
-
-    items = []
-    for entry in feed.entries:
-        title = entry.title
-        if "UDID_WEEK_UPDATE_" in title:
-            date_str = title.replace("UDID_WEEK_UPDATE_", "").replace(".zip", "")
-            try:
-                date = datetime.strptime(date_str, "%Y%m%d")
-            except:
-                date = None
-        else:
-            date = None
-
-        items.append(
-            {
-                "title": title,
-                "description": entry.description,
-                "link": entry.link,
-                "pubdate": entry.get("pubDate", ""),
-                "date": date,
-                "date_str": date_str if date else None,
-            }
-        )
-    print(f"找到 {len(items)} 个下载链接")
-    return items
-
-
-def list_available_dates(items):
-    """列出所有可用的周度日期"""
-    print("\n可用的下载周期:")
-    for item in items:
-        if item["date"]:
-            print(f"  {item['date'].strftime('%Y-%m-%d')} - {item['title']}")
-        else:
-            print(f"  未知日期 - {item['title']}")
-    print()
-
-
-def download_zip(url, filename):
-    """下载zip文件"""
-    print(f"正在下载: {filename}")
-    response = requests.get(url, timeout=60)
-    response.raise_for_status()
-    return response.content
-
-
-def extract_and_convert(zip_content, output_dir):
-    """解压zip文件并转换为Excel"""
-    os.makedirs(output_dir, exist_ok=True)
-
-    with zipfile.ZipFile(io.BytesIO(zip_content)) as zf:
-        print(f"zip文件包含: {zf.namelist()}")
-
-        for file_name in zf.namelist():
-            if file_name.endswith(".xml"):
-                print(f"处理XML文件: {file_name}")
-                xml_content = zf.read(file_name)
-                excel_filename = convert_xml_to_excel(
-                    xml_content, file_name, output_dir
-                )
-                print(f"已转换为Excel: {excel_filename}")
-            elif file_name.endswith((".xls", ".xlsx")):
-                print(f"处理Excel文件: {file_name}")
-                excel_content = zf.read(file_name)
-                excel_filename = convert_excel_to_excel(
-                    excel_content, file_name, output_dir
-                )
-                print(f"已转换为Excel: {excel_filename}")
-
-
-def convert_xml_to_excel(xml_content, xml_filename, output_dir):
-    """将XML内容转换为Excel"""
-    import xml.etree.ElementTree as ET
-    import pandas as pd
-
-    root = ET.fromstring(xml_content)
-
-    records = []
-
-    devices = root.find("devices")
-    if devices is not None:
-        for device in devices.findall("device"):
-            record = {}
-            for child in device:
-                tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
-                record[tag] = (
-                    child.text.strip() if child.text and child.text.strip() else ""
-                )
-            records.append(record)
-    else:
-        for child in root:
-            tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
-            if len(child) == 0:
-                continue
-            if tag == "devices":
-                for device in child.findall("device"):
-                    record = {}
-                    for subchild in device:
-                        subtag = (
-                            subchild.tag.split("}")[-1]
-                            if "}" in subchild.tag
-                            else subchild.tag
-                        )
-                        record[subtag] = (
-                            subchild.text.strip()
-                            if subchild.text and subchild.text.strip()
-                            else ""
-                        )
-                    records.append(record)
-
-    if not records:
-        print(f"警告: 无法从 {xml_filename} 中提取数据")
-        return None
-
-    df = pd.DataFrame(records)
-
-    if "deviceRecordKey" in df.columns:
-        df = df.sort_values("deviceRecordKey")
-
-    if on_data_parsed_callback:
-        source_info = {
-            "date": os.path.basename(output_dir),
-            "source_file": xml_filename,
-            "source_type": "xml",
-        }
-        on_data_parsed_callback(df, source_info)
-
-    base_name = os.path.splitext(os.path.basename(xml_filename))[0]
-    excel_filename = os.path.join(output_dir, f"{base_name}.xlsx")
-
-    df.to_excel(excel_filename, index=False, engine="openpyxl")
-
-    print(f"成功提取 {len(records)} 条记录")
-    return excel_filename
-
-
-def convert_excel_to_excel(excel_content, excel_filename, output_dir):
-    """将Excel内容转换为Excel"""
-    import pandas as pd
-
-    df = pd.read_excel(io.BytesIO(excel_content))
-
-    if on_data_parsed_callback:
-        source_info = {
-            "date": os.path.basename(output_dir),
-            "source_file": excel_filename,
-            "source_type": "excel",
-        }
-        on_data_parsed_callback(df, source_info)
-
-    base_name = os.path.splitext(os.path.basename(excel_filename))[0]
-    excel_filename = os.path.join(output_dir, f"{base_name}.xlsx")
-
-    df.to_excel(excel_filename, index=False, engine="openpyxl")
-
-    return excel_filename
-
-
-def find_by_date(items, date_str):
-    """根据日期字符串查找下载项"""
-    for item in items:
-        if item["date_str"] == date_str:
-            return item
-    return None
-
-
-def download_single(item):
-    """下载单个文件"""
-    print(f"\n选择文件: {item['title']}")
-    print(f"发布日期: {item['pubdate']}")
-
-    zip_content = download_zip(item["link"], item["title"])
-
-    output_dir = os.path.join(DOWNLOAD_DIR, item["date_str"])
-
-    extract_and_convert(zip_content, output_dir)
-
-    print(f"\n完成！文件已保存到: {output_dir}")
-
-
-def main():
-    parser = argparse.ArgumentParser(description="UDI周度数据下载工具")
-    parser.add_argument("-d", "--date", help="指定下载周期，格式YYYYMMDD，如 20260325")
-    parser.add_argument(
-        "-l", "--list", action="store_true", help="列出所有可用的下载周期"
+# ============================================================================
+# 主函数
+# ============================================================================
+def main() -> None:
+    """命令行主入口"""
+    parser = argparse.ArgumentParser(
+        description="UDI 周度数据下载工具",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
-        "-a", "--all", action="store_true", help="下载所有可用周期的数据"
+        "-l",
+        "--list",
+        action="store_true",
+        help="列出所有可用的下载周期",
     )
+    parser.add_argument(
+        "-d",
+        "--date",
+        help="指定下载周期的结束日期，格式 YYYYMMDD，如 20260322",
+    )
+    parser.add_argument(
+        "-a",
+        "--all",
+        action="store_true",
+        help="下载所有可用周期的数据",
+    )
+    parser.add_argument(
+        "--excel",
+        action="store_true",
+        help="输出为 Excel 格式（默认 CSV）",
+    )
+    parser.add_argument(
+        "--db",
+        choices=["oracle", "mysql", "hive"],
+        help="指定数据库类型，写入数据库",
+    )
+
     args = parser.parse_args()
 
-    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+    # 确保下载目录存在
+    ensure_download_dir()
 
-    items = parse_rss()
+    # 创建下载器
+    output_format = "excel" if args.excel else "csv"
+    downloader = UDIDownloader("weekly", output_format, args.db)
 
+    # 解析 RSS
+    items = downloader.parse_rss()
     if not items:
-        print("没有找到下载链接")
+        print("[ERROR] 没有找到下载链接")
         return
 
+    # 执行操作
     if args.list:
-        list_available_dates(items)
+        downloader.list_available()
+        return
+
+    if args.all:
+        downloader.download_all()
+        print_completion()
         return
 
     if args.date:
-        item = find_by_date(items, args.date)
+        item = downloader.find_by_date(args.date)
         if not item:
-            print(f"错误: 找不到周期为 {args.date} 的数据")
-            print("\n可用的周期:")
-            list_available_dates(items)
+            print(f"[ERROR] 未找到周期结束日期为 {args.date} 的数据")
+            downloader.list_available()
             return
-        download_single(item)
-    elif args.all:
-        for item in items:
-            if item["date"]:
-                download_single(item)
-    else:
-        latest = items[0]
-        for item in items:
-            if item["date"] and (not latest["date"] or item["date"] > latest["date"]):
-                latest = item
-        download_single(latest)
+        downloader.download_single(item)
+        print_completion()
+        return
+
+    # 默认下载最新
+    downloader.download_latest()
+    print_completion()
 
 
+# ============================================================================
+# 程序入口
+# ============================================================================
 if __name__ == "__main__":
     main()

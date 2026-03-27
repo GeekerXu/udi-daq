@@ -1,562 +1,394 @@
-import feedparser
-import requests
-import zipfile
-import io
+# -*- coding: utf-8 -*-
+"""
+UDI 数据下载工具 - 交互式界面
+==============================
+
+提供交互式菜单界面，支持：
+- 全量/日度/周度/月度数据下载
+- 列出可用版本
+- 数据库配置
+- 并行度设置
+
+用法:
+    python udid_daq_interactive.py
+
+作者: geekerxu
+版本: 3.1.0
+"""
+
+# ============================================================================
+# 编码设置
+# ============================================================================
+from core import setup_encoding
+
+setup_encoding()
+
+# ============================================================================
+# 标准库导入
+# ============================================================================
 import os
-from datetime import datetime
+import sys
+
+# ============================================================================
+# 本地模块导入
+# ============================================================================
+from core import UDIDownloader, ensure_download_dir, print_completion
 
 
-# RSS URLs for all types
-RSS_URLS = {
-    "daily": "https://udi.nmpa.gov.cn/rss/download.html?files=daily",
-    "weekly": "https://udi.nmpa.gov.cn/rss/download.html?files=weekly",
-    "monthly": "https://udi.nmpa.gov.cn/rss/download.html?files=monthly",
-    "all": "https://udi.nmpa.gov.cn/rss/download.html?files=all",
-    "full": "https://udi.nmpa.gov.cn/rss/download.html?files=full",
-}
+# ============================================================================
+# 交互式菜单类
+# ============================================================================
+class UDIInteractiveMenu:
+    """UDI 数据下载交互式菜单"""
 
-# Download directories
-DOWNLOAD_DIRS = {
-    "daily": "downloads",
-    "weekly": "downloads_weekly",
-    "monthly": "downloads_monthly",
-    "all": "downloads_all",
-    "full": "downloads_full",
-}
+    def __init__(self):
+        self.data_type = "full"
+        self.output_format = "csv"
+        self.db_type = None
+        self.max_workers = 4
+        self.running = True
 
-on_data_parsed_callback = None
-monthly_dataframes = []
+    def clear_screen(self):
+        """清屏"""
+        os.system("cls" if os.name == "nt" else "clear")
 
+    def print_header(self):
+        """打印标题"""
+        print("=" * 60)
+        print("        UDI 数据下载工具 - 交互式界面 v3.1.0")
+        print("=" * 60)
+        print()
 
-def set_data_callback(callback):
-    global on_data_parsed_callback
-    on_data_parsed_callback = callback
-
-
-def clear_screen():
-    os.system("cls" if os.name == "nt" else "clear")
-
-
-def print_banner():
-    print("=" * 60)
-    print("       UDI 数据下载工具 (全功能交互式版本)")
-    print("=" * 60)
-
-
-def parse_rss(url, rss_type):
-    """解析RSS订阅，获取所有可用的下载链接"""
-    print(f"\n正在解析RSS: {url}")
-    feed = feedparser.parse(url)
-
-    items = []
-
-    for entry in feed.entries:
-        title = entry.title
-        date_str = None
-        date = None
-        fmt = None
-
-        # 根据类型解析不同的标题格式
-        if rss_type == "daily" and "UDID_DAY_UPDATE_" in title:
-            date_str = title.replace("UDID_DAY_UPDATE_", "").replace(".zip", "")
-            fmt = "%Y%m%d"
-        elif rss_type == "weekly" and "UDID_WEEK_UPDATE_" in title:
-            date_str = title.replace("UDID_WEEK_UPDATE_", "").replace(".zip", "")
-            fmt = "%Y%m%d"
-        elif rss_type == "monthly" and "UDID_MONTH_UPDATE_" in title:
-            date_str = title.replace("UDID_MONTH_UPDATE_", "").replace(".zip", "")
-            fmt = "%Y%m"
-        elif rss_type == "all" and ("UDID_ALL_" in title or "UDID_ALLUPDATE_" in title):
-            date_str = (
-                title.replace("UDID_ALL_", "")
-                .replace("UDID_ALLUPDATE_", "")
-                .replace(".zip", "")
-            )
-            fmt = "%Y%m%d"
-        elif rss_type == "full" and (
-            "UDID_FULL_UPDATE_" in title or "UDID_FULLBUILD_" in title
-        ):
-            date_str = (
-                title.replace("UDID_FULL_UPDATE_", "")
-                .replace("UDID_FULLBUILD_", "")
-                .replace(".zip", "")
-            )
-            fmt = "%Y%m%d"
-
-        if fmt and date_str:
-            try:
-                date = datetime.strptime(date_str, fmt)
-            except:
-                date = None
-
-        items.append(
-            {
-                "title": title,
-                "description": entry.description,
-                "link": entry.link,
-                "pubdate": entry.get("pubDate", ""),
-                "date": date,
-                "date_str": date_str if date else None,
-            }
-        )
-
-    # 按日期排序
-    items.sort(key=lambda x: x["date"] or datetime.min, reverse=True)
-    print(f"找到 {len(items)} 个下载链接\n")
-    return items
-
-
-def download_zip(url, filename):
-    print(f"正在下载: {filename}")
-    response = requests.get(url, timeout=120)
-    response.raise_for_status()
-    return response.content
-
-
-def extract_daily_zip(day_zip_content, output_dir):
-    """解压日度zip文件"""
-    global monthly_dataframes
-
-    with zipfile.ZipFile(io.BytesIO(day_zip_content)) as day_zf:
-        print(f"  日度zip包含: {day_zf.namelist()}")
-
-        for file_name in day_zf.namelist():
-            if file_name.endswith(".xml"):
-                print(f"  处理XML文件: {file_name}")
-                xml_content = day_zf.read(file_name)
-                df = parse_xml_to_dataframe(xml_content, file_name)
-                if df is not None:
-                    monthly_dataframes.append(df)
-            elif file_name.endswith((".xls", ".xlsx")):
-                print(f"  处理Excel文件: {file_name}")
-                excel_content = day_zf.read(file_name)
-                df = parse_excel_to_dataframe(excel_content)
-                if df is not None:
-                    monthly_dataframes.append(df)
-
-
-def parse_xml_to_dataframe(xml_content, xml_filename):
-    import xml.etree.ElementTree as ET
-    import pandas as pd
-
-    root = ET.fromstring(xml_content)
-    records = []
-
-    devices = root.find("devices")
-    if devices is not None:
-        for device in devices.findall("device"):
-            record = {}
-            for child in device:
-                tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
-                record[tag] = (
-                    child.text.strip() if child.text and child.text.strip() else ""
-                )
-            records.append(record)
-    else:
-        for child in root:
-            tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
-            if len(child) == 0:
-                continue
-            if tag == "devices":
-                for device in child.findall("device"):
-                    record = {}
-                    for subchild in device:
-                        subtag = (
-                            subchild.tag.split("}")[-1]
-                            if "}" in subchild.tag
-                            else subchild.tag
-                        )
-                        record[subtag] = (
-                            subchild.text.strip()
-                            if subchild.text and subchild.text.strip()
-                            else ""
-                        )
-                    records.append(record)
-
-    if not records:
-        print(f"警告: 无法从 {xml_filename} 中提取数据")
-        return None
-
-    df = pd.DataFrame(records)
-    print(f"  成功提取 {len(records)} 条记录")
-    return df
-
-
-def parse_excel_to_dataframe(excel_content):
-    import pandas as pd
-
-    df = pd.read_excel(io.BytesIO(excel_content))
-    print(f"  成功读取 {len(df)} 条记录")
-    return df
-
-
-def extract_and_convert_monthly(zip_content, output_dir):
-    """月度数据需要合并所有日度数据"""
-    global monthly_dataframes
-    os.makedirs(output_dir, exist_ok=True)
-    monthly_dataframes = []
-
-    with zipfile.ZipFile(io.BytesIO(zip_content)) as zf:
-        print(f"zip文件包含: {zf.namelist()}")
-        for file_name in zf.namelist():
-            if file_name.endswith(".zip"):
-                print(f"处理日度压缩包: {file_name}")
-                day_zip_content = zf.read(file_name)
-                extract_daily_zip(day_zip_content, output_dir)
-
-    merge_and_save_monthly(output_dir)
-
-
-def merge_and_save_monthly(month_output_dir):
-    global monthly_dataframes, on_data_parsed_callback
-
-    if not monthly_dataframes:
-        print("警告: 没有数据可合并")
-        return
-
-    import pandas as pd
-
-    print(f"\n正在合并 {len(monthly_dataframes)} 个文件...")
-    merged_df = pd.concat(monthly_dataframes, ignore_index=True)
-
-    if "deviceRecordKey" in merged_df.columns:
-        merged_df = merged_df.sort_values("deviceRecordKey")
-
-    print(f"合并后共 {len(merged_df)} 条记录")
-
-    if on_data_parsed_callback:
-        source_info = {
-            "date": os.path.basename(month_output_dir),
-            "source_file": "monthly_merged",
-            "source_type": "merged",
+    def print_current_settings(self):
+        """打印当前设置"""
+        type_names = {
+            "daily": "日度",
+            "weekly": "周度",
+            "monthly": "月度",
+            "full": "全量",
         }
-        on_data_parsed_callback(merged_df, source_info)
+        print("当前设置:")
+        print(f"  - 数据类型: {type_names.get(self.data_type, self.data_type)}")
+        print(f"  - 输出格式: {self.output_format.upper()}")
+        print(f"  - 数据库: {self.db_type or '不写入数据库'}")
+        print(f"  - 并行度: {self.max_workers} 个工作进程")
+        print()
 
-    excel_filename = os.path.join(
-        month_output_dir, f"{os.path.basename(month_output_dir)}_merged.xlsx"
-    )
-    merged_df.to_excel(excel_filename, index=False, engine="openpyxl")
-    print(f"已保存合并文件: {excel_filename}")
+    def print_main_menu(self):
+        """打印主菜单"""
+        self.print_header()
+        self.print_current_settings()
+        print("请选择操作:")
+        print()
+        print("  [1] 下载数据")
+        print("  [2] 列出可用版本")
+        print("  [3] 切换数据类型")
+        print("  [4] 切换输出格式")
+        print("  [5] 数据库配置")
+        print("  [6] 并行度设置")
+        print("  [0] 退出")
+        print()
 
-
-def extract_and_convert_simple(zip_content, output_dir):
-    """日度、周度等简单类型直接解压转换"""
-    os.makedirs(output_dir, exist_ok=True)
-
-    with zipfile.ZipFile(io.BytesIO(zip_content)) as zf:
-        print(f"zip文件包含: {zf.namelist()}")
-        for file_name in zf.namelist():
-            if file_name.endswith(".xml"):
-                print(f"处理XML文件: {file_name}")
-                xml_content = zf.read(file_name)
-                convert_xml_to_excel(xml_content, file_name, output_dir)
-            elif file_name.endswith((".xls", ".xlsx")):
-                print(f"处理Excel文件: {file_name}")
-                excel_content = zf.read(file_name)
-                convert_excel_to_excel(excel_content, file_name, output_dir)
-
-
-def convert_xml_to_excel(xml_content, xml_filename, output_dir):
-    import xml.etree.ElementTree as ET
-    import pandas as pd
-
-    root = ET.fromstring(xml_content)
-    records = []
-
-    devices = root.find("devices")
-    if devices is not None:
-        for device in devices.findall("device"):
-            record = {}
-            for child in device:
-                tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
-                record[tag] = (
-                    child.text.strip() if child.text and child.text.strip() else ""
-                )
-            records.append(record)
-    else:
-        for child in root:
-            tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
-            if len(child) == 0:
-                continue
-            if tag == "devices":
-                for device in child.findall("device"):
-                    record = {}
-                    for subchild in device:
-                        subtag = (
-                            subchild.tag.split("}")[-1]
-                            if "}" in subchild.tag
-                            else subchild.tag
-                        )
-                        record[subtag] = (
-                            subchild.text.strip()
-                            if subchild.text and subchild.text.strip()
-                            else ""
-                        )
-                    records.append(record)
-
-    if not records:
-        print(f"警告: 无法从 {xml_filename} 中提取数据")
-        return
-
-    df = pd.DataFrame(records)
-
-    if "deviceRecordKey" in df.columns:
-        df = df.sort_values("deviceRecordKey")
-
-    if on_data_parsed_callback:
-        source_info = {
-            "date": os.path.basename(output_dir),
-            "source_file": xml_filename,
-            "source_type": "xml",
-        }
-        on_data_parsed_callback(df, source_info)
-
-    base_name = os.path.splitext(os.path.basename(xml_filename))[0]
-    excel_filename = os.path.join(output_dir, f"{base_name}.xlsx")
-    df.to_excel(excel_filename, index=False, engine="openpyxl")
-    print(f"成功提取 {len(records)} 条记录 -> {excel_filename}")
-
-
-def convert_excel_to_excel(excel_content, excel_filename, output_dir):
-    import pandas as pd
-
-    df = pd.read_excel(io.BytesIO(excel_content))
-
-    if on_data_parsed_callback:
-        source_info = {
-            "date": os.path.basename(output_dir),
-            "source_file": excel_filename,
-            "source_type": "excel",
-        }
-        on_data_parsed_callback(df, source_info)
-
-    base_name = os.path.splitext(os.path.basename(excel_filename))[0]
-    out_filename = os.path.join(output_dir, f"{base_name}.xlsx")
-    df.to_excel(out_filename, index=False, engine="openpyxl")
-    print(f"成功转换 -> {out_filename}")
-
-
-def download_item(item, rss_type):
-    """根据类型下载单个项目"""
-    download_dir = DOWNLOAD_DIRS[rss_type]
-    print(f"\n选择文件: {item['title']}")
-    print(f"发布日期: {item['pubdate']}")
-
-    zip_content = download_zip(item["link"], item["title"])
-    output_dir = os.path.join(download_dir, item["date_str"])
-
-    if rss_type == "monthly":
-        extract_and_convert_monthly(zip_content, output_dir)
-    else:
-        extract_and_convert_simple(zip_content, output_dir)
-
-    print(f"\n完成！文件已保存到: {output_dir}")
-
-
-def query_data(rss_type):
-    """查询可用数据"""
-    clear_screen()
-    print_banner()
-    type_names = {
-        "daily": "日度数据",
-        "weekly": "周度数据",
-        "monthly": "月度数据",
-        "all": "所有版本",
-        "full": "全量版本",
-    }
-    print(f" [{type_names[rss_type]}查询模式]\n")
-
-    items = parse_rss(RSS_URLS[rss_type], rss_type)
-
-    if not items:
-        print("没有找到下载链接")
-        input("\n按回车键返回...")
-        return
-
-    date_fmt = "%Y-%m" if rss_type == "monthly" else "%Y-%m-%d"
-    print(f"可用的下载:")
-    print("-" * 50)
-    for i, item in enumerate(items, 1):
-        date_display = item["date"].strftime(date_fmt) if item["date"] else "未知"
-        print(f"  {i:3}. {date_display} - {item['title']}")
-    print("-" * 50)
-    print(f"  0. 返回上一级")
-    print()
-
-    while True:
+    def get_input(self, prompt: str) -> str:
+        """获取用户输入"""
         try:
-            choice = input("请选择要查询详情的编号 (0返回): ").strip()
-            if choice == "0":
-                break
-            idx = int(choice) - 1
-            if 0 <= idx < len(items):
-                item = items[idx]
-                print(f"\n文件名: {item['title']}")
-                print(f"发布日期: {item['pubdate']}")
-                print(f"链接: {item['link']}")
-                print(f"描述: {item['description']}")
-                input("\n按回车键继续...")
-                break
-            else:
-                print("无效选择，请重试")
-        except ValueError:
-            print("请输入有效数字")
+            return input(prompt).strip()
+        except EOFError:
+            return ""
+        except KeyboardInterrupt:
+            print("\n\n用户取消操作")
+            return "0"
 
-
-def download_data_interactive(rss_type):
-    """交互式下载数据"""
-    clear_screen()
-    print_banner()
-    type_names = {
-        "daily": "日度数据",
-        "weekly": "周度数据",
-        "monthly": "月度数据",
-        "all": "所有版本",
-        "full": "全量版本",
-    }
-    print(f" [{type_names[rss_type]}下载模式]\n")
-
-    items = parse_rss(RSS_URLS[rss_type], rss_type)
-
-    if not items:
-        print("没有找到下载链接")
-        input("\n按回车键返回...")
-        return
-
-    date_fmt = "%Y-%m" if rss_type == "monthly" else "%Y-%m-%d"
-    print(f"可用的下载:")
-    print("-" * 50)
-    for i, item in enumerate(items, 1):
-        date_display = item["date"].strftime(date_fmt) if item["date"] else "未知"
-        print(f"  {i:3}. {date_display}")
-    print("-" * 50)
-    print(f"  A. 下载所有")
-    print(f"  L. 下载最新")
-    print(f"  0. 返回上一级")
-    print()
-
-    while True:
-        choice = input("请选择 (0/A/L/编号): ").strip().upper()
-        if choice == "0":
-            return
-        elif choice == "A":
-            for item in items:
-                if item["date"]:
-                    download_item(item, rss_type)
-            input("\n全部下载完成！按回车键返回...")
-            break
-        elif choice == "L":
-            for item in items:
-                if item["date"]:
-                    download_item(item, rss_type)
-                    break
-            input("\n下载完成！按回车键返回...")
-            break
-        else:
-            try:
-                idx = int(choice) - 1
-                if 0 <= idx < len(items):
-                    download_item(items[idx], rss_type)
-                    input("\n下载完成！按回车键返回...")
-                    break
-                else:
-                    print("无效选择，请重试")
-            except ValueError:
-                print("无效输入，请重试")
-
-
-def show_downloads():
-    """显示各类型下载目录统计"""
-    clear_screen()
-    print_banner()
-    print(" [下载目录查看]\n")
-
-    type_names = {
-        "daily": "日度数据",
-        "weekly": "周度数据",
-        "monthly": "月度数据",
-        "all": "所有版本",
-        "full": "全量版本",
-    }
-
-    for rss_type, download_dir in DOWNLOAD_DIRS.items():
-        print(f"{type_names[rss_type]}目录: {download_dir}")
-        if os.path.exists(download_dir):
-            dirs = [
-                d
-                for d in os.listdir(download_dir)
-                if os.path.isdir(os.path.join(download_dir, d))
-            ]
-            dirs.sort(reverse=True)
-            if dirs:
-                print(f"  共有 {len(dirs)} 个数据")
-                print(f"  最近3个:")
-                for d in dirs[:3]:
-                    files = os.listdir(os.path.join(download_dir, d))
-                    print(f"    {d}: {len(files)} 个文件")
-            else:
-                print("  (空目录)")
-        else:
-            print("  (目录不存在)")
+    def select_data_type(self):
+        """选择数据类型"""
+        self.clear_screen()
+        self.print_header()
+        print("选择数据类型:")
+        print()
+        print("  [1] 全量数据 (full)")
+        print("  [2] 日度数据 (daily)")
+        print("  [3] 周度数据 (weekly)")
+        print("  [4] 月度数据 (monthly)")
+        print("  [0] 返回")
         print()
 
-    input("按回车键返回...")
+        choice = self.get_input("请输入选项 [0-4]: ")
 
+        type_map = {
+            "1": "full",
+            "2": "daily",
+            "3": "weekly",
+            "4": "monthly",
+        }
 
-def main_menu():
-    while True:
-        clear_screen()
-        print_banner()
-        print("\n请选择操作:\n")
-        print("  1. 查询日度数据 (每日发布)")
-        print("  2. 查询周度数据 (每周发布)")
-        print("  3. 查询月度数据 (每月发布)")
-        print("  4. 查询所有版本 (全量历史)")
-        print("  5. 查询全量版本 (完整数据包)")
-        print("  -")
-        print("  6. 下载日度数据")
-        print("  7. 下载周度数据")
-        print("  8. 下载月度数据")
-        print("  9. 下载所有版本")
-        print(" 10. 下载全量版本")
-        print("  -")
-        print(" 11. 查看下载目录")
-        print("  0. 退出程序")
+        if choice in type_map:
+            self.data_type = type_map[choice]
+            print(f"\n已切换到: {self.data_type}")
+            input("\n按回车键继续...")
+
+    def select_output_format(self):
+        """选择输出格式"""
+        self.clear_screen()
+        self.print_header()
+        print("选择输出格式:")
+        print()
+        print("  [1] CSV (推荐，大数据量)")
+        print("  [2] Excel (仅适用于小数据量)")
+        print("  [0] 返回")
         print()
 
-        choice = input("请选择 (0-11): ").strip()
+        choice = self.get_input("请输入选项 [0-2]: ")
 
-        # 查询
         if choice == "1":
-            query_data("daily")
+            self.output_format = "csv"
+            print("\n已切换到: CSV")
+            input("\n按回车键继续...")
         elif choice == "2":
-            query_data("weekly")
-        elif choice == "3":
-            query_data("monthly")
-        elif choice == "4":
-            query_data("all")
-        elif choice == "5":
-            query_data("full")
-        # 下载
-        elif choice == "6":
-            download_data_interactive("daily")
-        elif choice == "7":
-            download_data_interactive("weekly")
-        elif choice == "8":
-            download_data_interactive("monthly")
-        elif choice == "9":
-            download_data_interactive("all")
-        elif choice == "10":
-            download_data_interactive("full")
-        elif choice == "11":
-            show_downloads()
-        elif choice == "0":
-            print("\n感谢使用！再见。\n")
-            break
+            self.output_format = "excel"
+            print("\n已切换到: Excel")
+            print("注意: 全量数据禁止使用 Excel 格式！")
+            input("\n按回车键继续...")
+
+    def configure_database(self):
+        """配置数据库"""
+        self.clear_screen()
+        self.print_header()
+        print("数据库配置:")
+        print()
+        print("  [1] Oracle")
+        print("  [2] MySQL")
+        print("  [3] Hive")
+        print("  [4] 不写入数据库")
+        print("  [0] 返回")
+        print()
+
+        choice = self.get_input("请输入选项 [0-4]: ")
+
+        db_map = {
+            "1": "oracle",
+            "2": "mysql",
+            "3": "hive",
+            "4": None,
+        }
+
+        if choice in db_map:
+            self.db_type = db_map[choice]
+            if self.db_type:
+                print(f"\n已配置: {self.db_type}")
+            else:
+                print("\n已取消数据库写入")
+            input("\n按回车键继续...")
+
+    def configure_parallelism(self):
+        """配置并行度"""
+        self.clear_screen()
+        self.print_header()
+        print("并行度设置:")
+        print()
+        print(f"  当前并行度: {self.max_workers} 个工作进程")
+        print("  (建议设置为 CPU 核心数)")
+        print()
+        print("  [1] 自动检测 (CPU 核心数)")
+        print("  [2] 手动输入")
+        print("  [0] 返回")
+        print()
+
+        choice = self.get_input("请输入选项 [0-2]: ")
+
+        if choice == "1":
+            import multiprocessing
+
+            self.max_workers = multiprocessing.cpu_count()
+            print(f"\n已设置并行度: {self.max_workers}")
+            input("\n按回车键继续...")
+        elif choice == "2":
+            try:
+                workers = int(self.get_input("请输入并行度 (1-16): "))
+                if 1 <= workers <= 16:
+                    self.max_workers = workers
+                    print(f"\n已设置并行度: {self.max_workers}")
+                else:
+                    print("\n输入无效，请输入 1-16 之间的数字")
+            except ValueError:
+                print("\n输入无效")
+            input("\n按回车键继续...")
+
+    def download_data(self):
+        """下载数据"""
+        self.clear_screen()
+        self.print_header()
+
+        # 检查输出格式限制
+        if self.data_type == "full" and self.output_format == "excel":
+            print("[错误] 全量数据禁止使用 Excel 格式！")
+            print("请先切换输出格式为 CSV。")
+            input("\n按回车键返回...")
+            return
+
+        type_names = {
+            "daily": "日度",
+            "weekly": "周度",
+            "monthly": "月度",
+            "full": "全量",
+        }
+
+        print(f"准备下载: {type_names.get(self.data_type, self.data_type)} 数据")
+        print()
+
+        print("  [1] 下载最新数据")
+        print("  [2] 列出并选择下载")
+        print("  [0] 返回")
+        print()
+
+        choice = self.get_input("请输入选项 [0-2]: ")
+
+        if choice == "1":
+            self._do_download_latest()
+        elif choice == "2":
+            self._download_selected()
+
+    def _do_download_latest(self):
+        """执行下载最新数据"""
+        print("\n开始下载...")
+        print("-" * 40)
+
+        ensure_download_dir()
+
+        downloader = UDIDownloader(self.data_type, self.output_format, self.db_type)
+
+        items = downloader.parse_rss()
+        if not items:
+            print("[错误] 没有找到下载链接")
+            input("\n按回车键返回...")
+            return
+
+        try:
+            filepath = downloader.download_latest()
+            if filepath:
+                print_completion()
+            else:
+                print("\n[完成] 下载完成")
+        except Exception as e:
+            print(f"\n[错误] 下载失败: {e}")
+
+        input("\n按回车键返回...")
+
+    def _download_selected(self):
+        """列出并选择下载"""
+        print("\n正在获取可用版本列表...")
+        print("-" * 40)
+
+        downloader = UDIDownloader(self.data_type, self.output_format, self.db_type)
+
+        items = downloader.parse_rss()
+        if not items:
+            print("[错误] 没有找到下载链接")
+            input("\n按回车键返回...")
+            return
+
+        downloader.list_available()
+
+        print("  [0] 返回")
+        print()
+
+        # 显示带编号的列表
+        for idx, item in enumerate(items, 1):
+            date_str = item.get("date_str", "未知")
+            print(f"  [{idx}] {date_str}")
+
+        print()
+        choice = self.get_input("请选择要下载的版本 [0-{}]: ".format(len(items)))
+
+        try:
+            idx = int(choice)
+            if idx == 0:
+                return
+            if 1 <= idx <= len(items):
+                selected = items[idx - 1]
+                print(f"\n开始下载: {selected.get('date_str', '未知')}")
+                print("-" * 40)
+
+                ensure_download_dir()
+
+                try:
+                    filepath = downloader.download_single(selected)
+                    if filepath:
+                        print_completion()
+                    else:
+                        print("\n[完成] 下载完成")
+                except Exception as e:
+                    print(f"\n[错误] 下载失败: {e}")
+
+                input("\n按回车键返回...")
+            else:
+                print("\n无效的选择")
+                input("\n按回车键返回...")
+        except ValueError:
+            print("\n无效的输入")
+            input("\n按回车键返回...")
+
+    def list_versions(self):
+        """列出可用版本"""
+        self.clear_screen()
+        self.print_header()
+
+        print("正在获取可用版本列表...")
+        print("-" * 40)
+
+        downloader = UDIDownloader(self.data_type, self.output_format, self.db_type)
+
+        items = downloader.parse_rss()
+        if items:
+            downloader.list_available()
         else:
-            print("\n无效选择，请重试")
-            input()
+            print("没有找到可用版本")
+
+        input("\n按回车键返回...")
+
+    def run(self):
+        """运行主循环"""
+        while self.running:
+            self.clear_screen()
+            self.print_main_menu()
+
+            choice = self.get_input("请输入选项 [0-6]: ")
+
+            if choice == "1":
+                self.download_data()
+            elif choice == "2":
+                self.list_versions()
+            elif choice == "3":
+                self.select_data_type()
+            elif choice == "4":
+                self.select_output_format()
+            elif choice == "5":
+                self.configure_database()
+            elif choice == "6":
+                self.configure_parallelism()
+            elif choice == "0":
+                self.running = False
+                self.clear_screen()
+                print("\n感谢使用 UDI 数据下载工具！\n")
+            else:
+                print("\n无效的选项，请重新输入")
+                input("\n按回车键继续...")
+
+
+# ============================================================================
+# 程序入口
+# ============================================================================
+def main():
+    """主入口"""
+    try:
+        menu = UDIInteractiveMenu()
+        menu.run()
+    except KeyboardInterrupt:
+        print("\n\n用户取消操作")
+        sys.exit(0)
+    except Exception as e:
+        print(f"\n[错误] 程序异常: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    main_menu()
+    main()

@@ -34,15 +34,16 @@ jobs:
           pyinstaller --onefile --name udid_daq_full udid_daq_full.py
           pyinstaller --onefile --name udid_daq_interactive udid_daq_interactive.py
 
-      - name: Prepare binaries
+      - name: Prepare Linux binaries with .bin suffix
         run: |
           mkdir -p dist_linux
-          cp dist/udid_daq_daily dist_linux/
-          cp dist/udid_daq_weekly dist_linux/
-          cp dist/udid_daq_monthly dist_linux/
-          cp dist/udid_daq_all dist_linux/
-          cp dist/udid_daq_full dist_linux/
-          cp dist/udid_daq_interactive dist_linux/
+          # Add .bin suffix to Linux executables for clear distinction from Windows
+          cp dist/udid_daq_daily dist_linux/udid_daq_daily-linux-x64.bin
+          cp dist/udid_daq_weekly dist_linux/udid_daq_weekly-linux-x64.bin
+          cp dist/udid_daq_monthly dist_linux/udid_daq_monthly-linux-x64.bin
+          cp dist/udid_daq_all dist_linux/udid_daq_all-linux-x64.bin
+          cp dist/udid_daq_full dist_linux/udid_daq_full-linux-x64.bin
+          cp dist/udid_daq_interactive dist_linux/udid_daq_interactive-linux-x64.bin
           chmod +x dist_linux/*
 
       - name: Upload to Release

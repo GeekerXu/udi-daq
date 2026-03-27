@@ -17,8 +17,10 @@ dist/
 # Data
 downloads/
 downloads_monthly/
+download/
 *.xlsx
 *.xls
+*.csv
 
 # IDE
 .idea/
