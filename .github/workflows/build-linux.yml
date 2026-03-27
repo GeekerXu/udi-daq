@@ -28,15 +28,21 @@ jobs:
       - name: Build executables
         run: |
           pyinstaller --onefile --name udid_daq_daily udid_daq_daily.py
-          pyinstaller --onefile --name udid_daq_interactive udid_daq_interactive.py
+          pyinstaller --onefile --name udid_daq_weekly udid_daq_weekly.py
           pyinstaller --onefile --name udid_daq_monthly udid_daq_monthly.py
+          pyinstaller --onefile --name udid_daq_all udid_daq_all.py
+          pyinstaller --onefile --name udid_daq_full udid_daq_full.py
+          pyinstaller --onefile --name udid_daq_interactive udid_daq_interactive.py
 
       - name: Prepare binaries
         run: |
           mkdir -p dist_linux
-          cp dist/udid_daq_interactive dist_linux/
           cp dist/udid_daq_daily dist_linux/
+          cp dist/udid_daq_weekly dist_linux/
           cp dist/udid_daq_monthly dist_linux/
+          cp dist/udid_daq_all dist_linux/
+          cp dist/udid_daq_full dist_linux/
+          cp dist/udid_daq_interactive dist_linux/
           chmod +x dist_linux/*
 
       - name: Upload to Release

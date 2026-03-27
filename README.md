@@ -2,10 +2,26 @@
 
 ## 工具简介
 
-从国家药监局UDI数据库自动下载UDI数据，支持日度和月度两种下载模式：
-- **交互式版本 (udid_daq_interactive.py)**: 图形化交互操作，可查询、可选择、可下载
-- **日度数据 (udid_daq_daily.py)**: 命令行下载每日增量数据
-- **月度数据 (udid_daq_monthly.py)**: 命令行下载月度数据，自动合并为单个文件
+从国家药监局UDI数据库自动下载UDI数据，支持全部5种下载模式：
+
+| 脚本 | 说明 | 数据类型 |
+|------|------|----------|
+| `udid_daq_interactive.py` | **全功能交互式版本** | 支持全部5种类型查询和下载 |
+| `udid_daq_daily.py` | 命令行日度下载器 | 每日增量更新数据 |
+| `udid_daq_weekly.py` | 命令行周度下载器 | 每周增量更新数据 |
+| `udid_daq_monthly.py` | 命令行月度下载器 | 每月增量更新数据（自动合并） |
+| `udid_daq_all.py` | 命令行全量下载器 | 所有历史版本汇总 |
+| `udid_daq_full.py` | 命令行全量包下载器 | 完整数据包下载 |
+
+### 数据源说明
+
+| 类型 | RSS地址 | 说明 |
+|------|---------|------|
+| 每日发布 | `files=daily` | 每个工作日的增量更新 |
+| 每周发布 | `files=weekly` | 每周汇总更新 |
+| 每月发布 | `files=monthly` | 每月汇总更新（含日度数据合并） |
+| 所有版本 | `files=all` | 完整历史数据 |
+| 全量发布 | `files=full` | 完整数据包 |
 
 ---
 
@@ -17,47 +33,56 @@
 
 前往 [Releases 页面](https://github.com/geekerxu/udid_daq/releases) 下载最新版本的exe文件：
 
-| 文件名 | 说明 | 使用场景 |
-|--------|------|----------|
-| `udid_daq_interactive.exe` | 交互式图形界面 | 推荐新手使用，双击即可运行 |
-| `udid_daq_daily.exe` | 日度数据命令行工具 | 下载每日增量数据 |
-| `udid_daq_monthly.exe` | 月度数据命令行工具 | 下载并合并月度数据 |
+| 文件名 | 说明 |
+|--------|------|
+| `udid_daq_interactive.exe` | **全功能交互式界面**（推荐） |
+| `udid_daq_daily.exe` | 日度数据下载器 |
+| `udid_daq_weekly.exe` | 周度数据下载器 |
+| `udid_daq_monthly.exe` | 月度数据下载器 |
+| `udid_daq_all.exe` | 所有版本下载器 |
+| `udid_daq_full.exe` | 全量包下载器 |
 
 ### exe 文件使用
 
-#### 交互式版本
+#### 交互式版本（推荐）
 ```
 双击 udid_daq_interactive.exe 直接运行
 ```
+支持查询和下载全部5种数据类型。
 
 #### 命令行版本
-```cmd
-# 列出可用日期
-udid_daq_daily.exe -l
-
-# 下载最新数据
-udid_daq_daily.exe
-
-# 下载指定日期
-udid_daq_daily.exe -d 20260325
-```
 
 ```cmd
-# 列出可用月份
+# 日度数据
+udid_daq_daily.exe -l           # 列出可用日期
+udid_daq_daily.exe              # 下载最新
+udid_daq_daily.exe -d 20260325  # 下载指定日期
+udid_daq_daily.exe -a           # 下载所有
+
+# 周度数据
+udid_daq_weekly.exe -l
+udid_daq_weekly.exe
+udid_daq_weekly.exe -d 20260325
+
+# 月度数据
 udid_daq_monthly.exe -l
-
-# 下载最新月份
 udid_daq_monthly.exe
+udid_daq_monthly.exe -m 202603
 
-# 下载指定月份
-udid_daq_monthly.exe -m 202601
+# 所有版本
+udid_daq_all.exe -l
+udid_daq_all.exe
+
+# 全量包
+udid_daq_full.exe -l
+udid_daq_full.exe
 ```
 
 ### 注意事项
 
-- exe 文件较大（约 39MB），因为包含了完整的 Python 运行时
+- exe 文件较大（约 40MB），因为包含了完整的 Python 运行时
 - 部分杀毒软件可能会误报，建议将 exe 添加到白名单
-- 数据下载后保存在程序所在目录的 `downloads` 或 `downloads_monthly` 文件夹中
+- 数据保存在程序所在目录的对应文件夹中
 
 ---
 
@@ -69,19 +94,22 @@ udid_daq_monthly.exe -m 202601
 
 前往 [Releases 页面](https://github.com/geekerxu/udid_daq/releases) 下载最新版本的Linux可执行文件：
 
-| 文件名 | 说明 | 使用场景 |
-|--------|------|----------|
-| `udid_daq_interactive` | 交互式图形界面 | 推荐使用，双击即可运行 |
-| `udid_daq_daily` | 日度数据命令行工具 | 下载每日增量数据 |
-| `udid_daq_monthly` | 月度数据命令行工具 | 下载并合并月度数据 |
+| 文件名 | 说明 |
+|--------|------|
+| `udid_daq_interactive` | **全功能交互式界面**（推荐） |
+| `udid_daq_daily` | 日度数据下载器 |
+| `udid_daq_weekly` | 周度数据下载器 |
+| `udid_daq_monthly` | 月度数据下载器 |
+| `udid_daq_all` | 所有版本下载器 |
+| `udid_daq_full` | 全量包下载器 |
 
 ### Linux 使用
 
 ```bash
-# 1. 下载后添加执行权限
+# 添加执行权限
 chmod +x udid_daq_interactive
 
-# 2. 直接运行（交互式版本）
+# 直接运行（交互式版本）
 ./udid_daq_interactive
 
 # 命令行版本示例
@@ -102,7 +130,7 @@ Linux 可执行文件通过 GitHub Actions CI 自动构建。每次发布新版�
 
 - Linux 二进制文件兼容大多数主流发行版（Ubuntu, Debian, Fedora, Arch 等）
 - 依赖 glibc 2.17+（大多数现代Linux发行版都满足）
-- 数据下载后保存在用户主目录的 `downloads` 或 `downloads_monthly` 文件夹中
+- 数据下载后保存在程序所在目录的对应文件夹中
 
 ---
 
@@ -196,8 +224,6 @@ python udid_daq_monthly.py
 
 ## 交互式版本 (推荐)
 
-## 交互式版本 (推荐)
-
 ### 启动
 
 ```bash
@@ -209,11 +235,19 @@ python udid_daq_interactive.py
 ```
 请选择操作:
 
-  1. 查询日度数据 (查看可用日期)
-  2. 查询月度数据 (查看可用月份)
-  3. 下载日度数据
-  4. 下载月度数据
-  5. 查看下载目录
+  1. 查询日度数据 (每日发布)
+  2. 查询周度数据 (每周发布)
+  3. 查询月度数据 (每月发布)
+  4. 查询所有版本 (全量历史)
+  5. 查询全量版本 (完整数据包)
+  -
+  6. 下载日度数据
+  7. 下载周度数据
+  8. 下载月度数据
+  9. 下载所有版本
+ 10. 下载全量版本
+  -
+ 11. 查看下载目录
   0. 退出程序
 ```
 
@@ -221,15 +255,17 @@ python udid_daq_interactive.py
 
 | 选项 | 功能 | 说明 |
 |------|------|------|
-| 1 | 查询日度数据 | 查看所有可用的日度下载日期（不下载） |
-| 2 | 查询月度数据 | 查看所有可用的月度下载月份（不下载） |
-| 3 | 下载日度数据 | 支持选择日期/最新/全部下载 |
-| 4 | 下载月度数据 | 支持选择月份/最新/全部下载 |
-| 5 | 查看下载目录 | 查看已下载数据统计 |
+| 1 | 查询日度数据 | 查看每日发布数据（不下载） |
+| 2 | 查询周度数据 | 查看每周发布数据 |
+| 3 | 查询月度数据 | 查看每月发布数据 |
+| 4 | 查询所有版本 | 查看所有历史版本 |
+| 5 | 查询全量版本 | 查看完整数据包 |
+| 6-10 | 下载对应类型 | 支持选择/最新/全部下载 |
+| 11 | 查看下载目录 | 查看已下载数据统计 |
 
 ### 下载选项说明
 
-- **输入编号**: 下载指定日期/月份的数据
+- **输入编号**: 下载指定日期/周期的数据
 - **输入 L**: 下载最新的数据
 - **输入 A**: 下载所有可用数据
 
@@ -312,6 +348,118 @@ python udid_daq_monthly.py -a
 
 ---
 
+## 周度数据下载 (udid_daq_weekly.py)
+
+> 命令行周度数据下载器
+
+### 列出所有可用的下载周期
+
+```bash
+python udid_daq_weekly.py -l
+```
+
+### 下载最新周期的数据
+
+```bash
+python udid_daq_weekly.py
+```
+
+### 下载指定周期的数据
+
+```bash
+python udid_daq_weekly.py -d 20260325
+```
+
+### 下载所有周期的数据
+
+```bash
+python udid_daq_weekly.py -a
+```
+
+### 数据输出
+
+周度数据保存在 `downloads_weekly/YYYYMMDD/` 目录下。
+
+---
+
+## 所有版本下载 (udid_daq_all.py)
+
+> 命令行所有历史版本下载器
+
+### 列出所有可用的版本
+
+```bash
+python udid_daq_all.py -l
+```
+
+### 下载最新版本
+
+```bash
+python udid_daq_all.py
+```
+
+### 下载指定版本
+
+```bash
+python udid_daq_all.py -d 20260325
+```
+
+### 下载所有版本
+
+```bash
+python udid_daq_all.py -a
+```
+
+### 数据输出
+
+所有版本数据保存在 `downloads_all/YYYYMMDD/` 目录下。
+
+### 注意事项
+
+- 所有版本数据量较大，下载时间较长
+- 建议使用 `-l` 先查看可用版本
+
+---
+
+## 全量版本下载 (udid_daq_full.py)
+
+> 命令行完整数据包下载器
+
+### 列出所有可用的全量版本
+
+```bash
+python udid_daq_full.py -l
+```
+
+### 下载最新全量版本
+
+```bash
+python udid_daq_full.py
+```
+
+### 下载指定版本
+
+```bash
+python udid_daq_full.py -d 20260325
+```
+
+### 下载所有全量版本
+
+```bash
+python udid_daq_full.py -a
+```
+
+### 数据输出
+
+全量数据保存在 `downloads_full/YYYYMMDD/` 目录下。
+
+### 注意事项
+
+- 全量包数据量最大，下载需要较长时间
+- 建议使用 `-l` 先查看可用版本
+
+---
+
 ## 数据入库扩展
 
 解析完成后支持回调函数，可将数据插入 Oracle 或 Hive 表中。
@@ -359,7 +507,7 @@ set_data_callback(my_data_handler)
 
 ## 交互式版本与命令行版本的关系
 
-交互式版本 `udid_daq_interactive.py` 封装了日度和月度下载功能，提供用户友好的交互界面。
+交互式版本 `udid_daq_interactive.py` 封装了全部5种数据类型的下载功能，提供用户友好的交互界面。
 
 **两者共享相同的核心逻辑：**
 - 相同的 RSS 解析
@@ -376,3 +524,4 @@ set_data_callback(my_data_handler)
 - 可视化操作，无需记忆命令参数
 - 可随时查询可用数据，不下载
 - 灵活的单个/批量下载选择
+- 支持全部5种数据类型

@@ -6,10 +6,23 @@ import os
 from datetime import datetime
 
 
-DAILY_RSS_URL = "https://udi.nmpa.gov.cn/rss/download.html?files=daily"
-MONTHLY_RSS_URL = "https://udi.nmpa.gov.cn/rss/download.html?files=monthly"
-DAILY_DOWNLOAD_DIR = "downloads"
-MONTHLY_DOWNLOAD_DIR = "downloads_monthly"
+# RSS URLs for all types
+RSS_URLS = {
+    "daily": "https://udi.nmpa.gov.cn/rss/download.html?files=daily",
+    "weekly": "https://udi.nmpa.gov.cn/rss/download.html?files=weekly",
+    "monthly": "https://udi.nmpa.gov.cn/rss/download.html?files=monthly",
+    "all": "https://udi.nmpa.gov.cn/rss/download.html?files=all",
+    "full": "https://udi.nmpa.gov.cn/rss/download.html?files=full",
+}
+
+# Download directories
+DOWNLOAD_DIRS = {
+    "daily": "downloads",
+    "weekly": "downloads_weekly",
+    "monthly": "downloads_monthly",
+    "all": "downloads_all",
+    "full": "downloads_full",
+}
 
 on_data_parsed_callback = None
 monthly_dataframes = []
@@ -26,32 +39,55 @@ def clear_screen():
 
 def print_banner():
     print("=" * 60)
-    print("       UDI 数据下载工具 (交互式版本)")
+    print("       UDI 数据下载工具 (全功能交互式版本)")
     print("=" * 60)
 
 
-def parse_rss(url):
+def parse_rss(url, rss_type):
+    """解析RSS订阅，获取所有可用的下载链接"""
     print(f"\n正在解析RSS: {url}")
     feed = feedparser.parse(url)
 
     items = []
-    is_monthly = "monthly" in url
 
     for entry in feed.entries:
         title = entry.title
-        if is_monthly and "UDID_MONTH_UPDATE_" in title:
-            date_str = title.replace("UDID_MONTH_UPDATE_", "").replace(".zip", "")
-            fmt = "%Y%m"
-        elif not is_monthly and "UDID_DAY_UPDATE_" in title:
+        date_str = None
+        date = None
+        fmt = None
+
+        # 根据类型解析不同的标题格式
+        if rss_type == "daily" and "UDID_DAY_UPDATE_" in title:
             date_str = title.replace("UDID_DAY_UPDATE_", "").replace(".zip", "")
             fmt = "%Y%m%d"
-        else:
-            continue
+        elif rss_type == "weekly" and "UDID_WEEK_UPDATE_" in title:
+            date_str = title.replace("UDID_WEEK_UPDATE_", "").replace(".zip", "")
+            fmt = "%Y%m%d"
+        elif rss_type == "monthly" and "UDID_MONTH_UPDATE_" in title:
+            date_str = title.replace("UDID_MONTH_UPDATE_", "").replace(".zip", "")
+            fmt = "%Y%m"
+        elif rss_type == "all" and ("UDID_ALL_" in title or "UDID_ALLUPDATE_" in title):
+            date_str = (
+                title.replace("UDID_ALL_", "")
+                .replace("UDID_ALLUPDATE_", "")
+                .replace(".zip", "")
+            )
+            fmt = "%Y%m%d"
+        elif rss_type == "full" and (
+            "UDID_FULL_UPDATE_" in title or "UDID_FULLBUILD_" in title
+        ):
+            date_str = (
+                title.replace("UDID_FULL_UPDATE_", "")
+                .replace("UDID_FULLBUILD_", "")
+                .replace(".zip", "")
+            )
+            fmt = "%Y%m%d"
 
-        try:
-            date = datetime.strptime(date_str, fmt)
-        except:
-            date = None
+        if fmt and date_str:
+            try:
+                date = datetime.strptime(date_str, fmt)
+            except:
+                date = None
 
         items.append(
             {
@@ -64,6 +100,7 @@ def parse_rss(url):
             }
         )
 
+    # 按日期排序
     items.sort(key=lambda x: x["date"] or datetime.min, reverse=True)
     print(f"找到 {len(items)} 个下载链接\n")
     return items
@@ -71,12 +108,13 @@ def parse_rss(url):
 
 def download_zip(url, filename):
     print(f"正在下载: {filename}")
-    response = requests.get(url, timeout=60)
+    response = requests.get(url, timeout=120)
     response.raise_for_status()
     return response.content
 
 
-def extract_daily_zip(day_zip_content, month_output_dir):
+def extract_daily_zip(day_zip_content, output_dir):
+    """解压日度zip文件"""
     global monthly_dataframes
 
     with zipfile.ZipFile(io.BytesIO(day_zip_content)) as day_zf:
@@ -153,6 +191,7 @@ def parse_excel_to_dataframe(excel_content):
 
 
 def extract_and_convert_monthly(zip_content, output_dir):
+    """月度数据需要合并所有日度数据"""
     global monthly_dataframes
     os.makedirs(output_dir, exist_ok=True)
     monthly_dataframes = []
@@ -200,7 +239,8 @@ def merge_and_save_monthly(month_output_dir):
     print(f"已保存合并文件: {excel_filename}")
 
 
-def extract_and_convert_daily(zip_content, output_dir):
+def extract_and_convert_simple(zip_content, output_dir):
+    """日度、周度等简单类型直接解压转换"""
     os.makedirs(output_dir, exist_ok=True)
 
     with zipfile.ZipFile(io.BytesIO(zip_content)) as zf:
@@ -296,39 +336,48 @@ def convert_excel_to_excel(excel_content, excel_filename, output_dir):
     print(f"成功转换 -> {out_filename}")
 
 
-def download_daily(item):
+def download_item(item, rss_type):
+    """根据类型下载单个项目"""
+    download_dir = DOWNLOAD_DIRS[rss_type]
     print(f"\n选择文件: {item['title']}")
     print(f"发布日期: {item['pubdate']}")
+
     zip_content = download_zip(item["link"], item["title"])
-    output_dir = os.path.join(DAILY_DOWNLOAD_DIR, item["date_str"])
-    extract_and_convert_daily(zip_content, output_dir)
+    output_dir = os.path.join(download_dir, item["date_str"])
+
+    if rss_type == "monthly":
+        extract_and_convert_monthly(zip_content, output_dir)
+    else:
+        extract_and_convert_simple(zip_content, output_dir)
+
     print(f"\n完成！文件已保存到: {output_dir}")
 
 
-def download_monthly(item):
-    print(f"\n选择文件: {item['title']}")
-    print(f"发布日期: {item['pubdate']}")
-    zip_content = download_zip(item["link"], item["title"])
-    output_dir = os.path.join(MONTHLY_DOWNLOAD_DIR, item["date_str"])
-    extract_and_convert_monthly(zip_content, output_dir)
-    print(f"\n完成！文件已保存到: {output_dir}")
-
-
-def query_daily():
+def query_data(rss_type):
+    """查询可用数据"""
     clear_screen()
     print_banner()
-    print(" [日度数据查询模式]\n")
-    items = parse_rss(DAILY_RSS_URL)
+    type_names = {
+        "daily": "日度数据",
+        "weekly": "周度数据",
+        "monthly": "月度数据",
+        "all": "所有版本",
+        "full": "全量版本",
+    }
+    print(f" [{type_names[rss_type]}查询模式]\n")
+
+    items = parse_rss(RSS_URLS[rss_type], rss_type)
 
     if not items:
         print("没有找到下载链接")
         input("\n按回车键返回...")
         return
 
-    print("可用的下载日期:")
+    date_fmt = "%Y-%m" if rss_type == "monthly" else "%Y-%m-%d"
+    print(f"可用的下载:")
     print("-" * 50)
     for i, item in enumerate(items, 1):
-        date_display = item["date"].strftime("%Y-%m-%d") if item["date"] else "未知"
+        date_display = item["date"].strftime(date_fmt) if item["date"] else "未知"
         print(f"  {i:3}. {date_display} - {item['title']}")
     print("-" * 50)
     print(f"  0. 返回上一级")
@@ -336,7 +385,7 @@ def query_daily():
 
     while True:
         try:
-            choice = input("请选择要查询详情的日期编号 (0返回): ").strip()
+            choice = input("请选择要查询详情的编号 (0返回): ").strip()
             if choice == "0":
                 break
             idx = int(choice) - 1
@@ -354,148 +403,104 @@ def query_daily():
             print("请输入有效数字")
 
 
-def query_monthly():
+def download_data_interactive(rss_type):
+    """交互式下载数据"""
     clear_screen()
     print_banner()
-    print(" [月度数据查询模式]\n")
-    items = parse_rss(MONTHLY_RSS_URL)
+    type_names = {
+        "daily": "日度数据",
+        "weekly": "周度数据",
+        "monthly": "月度数据",
+        "all": "所有版本",
+        "full": "全量版本",
+    }
+    print(f" [{type_names[rss_type]}下载模式]\n")
+
+    items = parse_rss(RSS_URLS[rss_type], rss_type)
 
     if not items:
         print("没有找到下载链接")
         input("\n按回车键返回...")
         return
 
-    print("可用的下载月份:")
+    date_fmt = "%Y-%m" if rss_type == "monthly" else "%Y-%m-%d"
+    print(f"可用的下载:")
     print("-" * 50)
     for i, item in enumerate(items, 1):
-        date_display = item["date"].strftime("%Y-%m") if item["date"] else "未知"
-        print(f"  {i:3}. {date_display} - {item['title']}")
+        date_display = item["date"].strftime(date_fmt) if item["date"] else "未知"
+        print(f"  {i:3}. {date_display}")
     print("-" * 50)
+    print(f"  A. 下载所有")
+    print(f"  L. 下载最新")
     print(f"  0. 返回上一级")
     print()
 
     while True:
-        try:
-            choice = input("请选择要查询详情的月份编号 (0返回): ").strip()
-            if choice == "0":
-                break
-            idx = int(choice) - 1
-            if 0 <= idx < len(items):
-                item = items[idx]
-                print(f"\n文件名: {item['title']}")
-                print(f"发布日期: {item['pubdate']}")
-                print(f"链接: {item['link']}")
-                print(f"描述: {item['description']}")
-                input("\n按回车键继续...")
-                break
+        choice = input("请选择 (0/A/L/编号): ").strip().upper()
+        if choice == "0":
+            return
+        elif choice == "A":
+            for item in items:
+                if item["date"]:
+                    download_item(item, rss_type)
+            input("\n全部下载完成！按回车键返回...")
+            break
+        elif choice == "L":
+            for item in items:
+                if item["date"]:
+                    download_item(item, rss_type)
+                    break
+            input("\n下载完成！按回车键返回...")
+            break
+        else:
+            try:
+                idx = int(choice) - 1
+                if 0 <= idx < len(items):
+                    download_item(items[idx], rss_type)
+                    input("\n下载完成！按回车键返回...")
+                    break
+                else:
+                    print("无效选择，请重试")
+            except ValueError:
+                print("无效输入，请重试")
+
+
+def show_downloads():
+    """显示各类型下载目录统计"""
+    clear_screen()
+    print_banner()
+    print(" [下载目录查看]\n")
+
+    type_names = {
+        "daily": "日度数据",
+        "weekly": "周度数据",
+        "monthly": "月度数据",
+        "all": "所有版本",
+        "full": "全量版本",
+    }
+
+    for rss_type, download_dir in DOWNLOAD_DIRS.items():
+        print(f"{type_names[rss_type]}目录: {download_dir}")
+        if os.path.exists(download_dir):
+            dirs = [
+                d
+                for d in os.listdir(download_dir)
+                if os.path.isdir(os.path.join(download_dir, d))
+            ]
+            dirs.sort(reverse=True)
+            if dirs:
+                print(f"  共有 {len(dirs)} 个数据")
+                print(f"  最近3个:")
+                for d in dirs[:3]:
+                    files = os.listdir(os.path.join(download_dir, d))
+                    print(f"    {d}: {len(files)} 个文件")
             else:
-                print("无效选择，请重试")
-        except ValueError:
-            print("请输入有效数字")
-
-
-def download_daily_interactive():
-    clear_screen()
-    print_banner()
-    print(" [日度数据下载模式]\n")
-    items = parse_rss(DAILY_RSS_URL)
-
-    if not items:
-        print("没有找到下载链接")
-        input("\n按回车键返回...")
-        return
-
-    print("可用的下载日期:")
-    print("-" * 50)
-    for i, item in enumerate(items, 1):
-        date_display = item["date"].strftime("%Y-%m-%d") if item["date"] else "未知"
-        print(f"  {i:3}. {date_display}")
-    print("-" * 50)
-    print(f"  A. 下载所有日期")
-    print(f"  L. 下载最新日期")
-    print(f"  0. 返回上一级")
-    print()
-
-    while True:
-        choice = input("请选择 (0/A/L/编号): ").strip().upper()
-        if choice == "0":
-            return
-        elif choice == "A":
-            for item in items:
-                if item["date"]:
-                    download_daily(item)
-            input("\n全部下载完成！按回车键返回...")
-            break
-        elif choice == "L":
-            for item in items:
-                if item["date"]:
-                    download_daily(item)
-                    break
-            input("\n下载完成！按回车键返回...")
-            break
+                print("  (空目录)")
         else:
-            try:
-                idx = int(choice) - 1
-                if 0 <= idx < len(items):
-                    download_daily(items[idx])
-                    input("\n下载完成！按回车键返回...")
-                    break
-                else:
-                    print("无效选择，请重试")
-            except ValueError:
-                print("无效输入，请重试")
+            print("  (目录不存在)")
+        print()
 
-
-def download_monthly_interactive():
-    clear_screen()
-    print_banner()
-    print(" [月度数据下载模式]\n")
-    items = parse_rss(MONTHLY_RSS_URL)
-
-    if not items:
-        print("没有找到下载链接")
-        input("\n按回车键返回...")
-        return
-
-    print("可用的下载月份:")
-    print("-" * 50)
-    for i, item in enumerate(items, 1):
-        date_display = item["date"].strftime("%Y-%m") if item["date"] else "未知"
-        print(f"  {i:3}. {date_display}")
-    print("-" * 50)
-    print(f"  A. 下载所有月份")
-    print(f"  L. 下载最新月份")
-    print(f"  0. 返回上一级")
-    print()
-
-    while True:
-        choice = input("请选择 (0/A/L/编号): ").strip().upper()
-        if choice == "0":
-            return
-        elif choice == "A":
-            for item in items:
-                if item["date"]:
-                    download_monthly(item)
-            input("\n全部下载完成！按回车键返回...")
-            break
-        elif choice == "L":
-            for item in items:
-                if item["date"]:
-                    download_monthly(item)
-                    break
-            input("\n下载完成！按回车键返回...")
-            break
-        else:
-            try:
-                idx = int(choice) - 1
-                if 0 <= idx < len(items):
-                    download_monthly(items[idx])
-                    input("\n下载完成！按回车键返回...")
-                    break
-                else:
-                    print("无效选择，请重试")
-            except ValueError:
-                print("无效输入，请重试")
+    input("按回车键返回...")
 
 
 def main_menu():
@@ -503,25 +508,47 @@ def main_menu():
         clear_screen()
         print_banner()
         print("\n请选择操作:\n")
-        print("  1. 查询日度数据 (查看可用日期)")
-        print("  2. 查询月度数据 (查看可用月份)")
-        print("  3. 下载日度数据")
-        print("  4. 下载月度数据")
-        print("  5. 查看下载目录")
+        print("  1. 查询日度数据 (每日发布)")
+        print("  2. 查询周度数据 (每周发布)")
+        print("  3. 查询月度数据 (每月发布)")
+        print("  4. 查询所有版本 (全量历史)")
+        print("  5. 查询全量版本 (完整数据包)")
+        print("  -")
+        print("  6. 下载日度数据")
+        print("  7. 下载周度数据")
+        print("  8. 下载月度数据")
+        print("  9. 下载所有版本")
+        print(" 10. 下载全量版本")
+        print("  -")
+        print(" 11. 查看下载目录")
         print("  0. 退出程序")
         print()
 
-        choice = input("请选择 (0-5): ").strip()
+        choice = input("请选择 (0-11): ").strip()
 
+        # 查询
         if choice == "1":
-            query_daily()
+            query_data("daily")
         elif choice == "2":
-            query_monthly()
+            query_data("weekly")
         elif choice == "3":
-            download_daily_interactive()
+            query_data("monthly")
         elif choice == "4":
-            download_monthly_interactive()
+            query_data("all")
         elif choice == "5":
+            query_data("full")
+        # 下载
+        elif choice == "6":
+            download_data_interactive("daily")
+        elif choice == "7":
+            download_data_interactive("weekly")
+        elif choice == "8":
+            download_data_interactive("monthly")
+        elif choice == "9":
+            download_data_interactive("all")
+        elif choice == "10":
+            download_data_interactive("full")
+        elif choice == "11":
             show_downloads()
         elif choice == "0":
             print("\n感谢使用！再见。\n")
@@ -529,52 +556,6 @@ def main_menu():
         else:
             print("\n无效选择，请重试")
             input()
-
-
-def show_downloads():
-    clear_screen()
-    print_banner()
-    print(" [下载目录查看]\n")
-
-    print(f"日度数据目录: {DAILY_DOWNLOAD_DIR}")
-    if os.path.exists(DAILY_DOWNLOAD_DIR):
-        dirs = [
-            d
-            for d in os.listdir(DAILY_DOWNLOAD_DIR)
-            if os.path.isdir(os.path.join(DAILY_DOWNLOAD_DIR, d))
-        ]
-        dirs.sort(reverse=True)
-        if dirs:
-            print(f"  共有 {len(dirs)} 个日期的数据")
-            print("  最近5个:")
-            for d in dirs[:5]:
-                files = os.listdir(os.path.join(DAILY_DOWNLOAD_DIR, d))
-                print(f"    {d}: {len(files)} 个文件")
-        else:
-            print("  (空目录)")
-    else:
-        print("  (目录不存在)")
-
-    print(f"\n月度数据目录: {MONTHLY_DOWNLOAD_DIR}")
-    if os.path.exists(MONTHLY_DOWNLOAD_DIR):
-        dirs = [
-            d
-            for d in os.listdir(MONTHLY_DOWNLOAD_DIR)
-            if os.path.isdir(os.path.join(MONTHLY_DOWNLOAD_DIR, d))
-        ]
-        dirs.sort(reverse=True)
-        if dirs:
-            print(f"  共有 {len(dirs)} 个月份的数据")
-            print("  最近5个:")
-            for d in dirs[:5]:
-                files = os.listdir(os.path.join(MONTHLY_DOWNLOAD_DIR, d))
-                print(f"    {d}: {len(files)} 个文件")
-        else:
-            print("  (空目录)")
-    else:
-        print("  (目录不存在)")
-
-    input("\n按回车键返回...")
 
 
 if __name__ == "__main__":
