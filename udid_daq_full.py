@@ -67,6 +67,12 @@ def main() -> None:
     except ValueError as e:
         print(f"\n[ERROR] {e}")
         return
+    except ImportError as e:
+        print(f"\n[ERROR] {e}")
+        return
+    except ConnectionError as e:
+        print(f"\n[ERROR] {e}")
+        return
 
     # 解析 RSS
     items = downloader.parse_rss()

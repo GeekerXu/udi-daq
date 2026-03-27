@@ -153,7 +153,7 @@ def _load_config_from_env(db_type: str) -> Dict[str, Any]:
 # ============================================================================
 def set_db_config(db_type: str, config: Dict[str, Any]) -> bool:
     """
-    设置数据库配置
+    设置数据库配置并测试连接
 
     配置来源优先级:
     1. 显式传入的 config 参数
@@ -165,10 +165,12 @@ def set_db_config(db_type: str, config: Dict[str, Any]) -> bool:
         config: 配置字典（可选，用于覆盖默认配置）
 
     返回:
-        True 如果配置有效
+        True 如果配置有效且连接成功
 
     异常:
         ValueError: 配置不完整时抛出
+        ImportError: 数据库驱动未安装时抛出
+        ConnectionError: 数据库连接失败时抛出
     """
     global _EXTERNAL_DB_CONFIG, _DB_TYPE
 
@@ -226,10 +228,15 @@ def set_db_config(db_type: str, config: Dict[str, Any]) -> bool:
 """
         raise ValueError(error_msg)
 
+    # 设置配置
     _EXTERNAL_DB_CONFIG = {"db_type": db_type, "config": merged_config}
     _DB_TYPE = db_type
 
     print(f"[DB][INFO] 数据库配置已设置: {db_type}")
+
+    # 测试数据库连接
+    test_db_connection(db_type, merged_config)
+
     return True
 
 
@@ -302,6 +309,73 @@ def get_db_type() -> Optional[str]:
     if _EXTERNAL_DB_CONFIG is not None:
         return _EXTERNAL_DB_CONFIG.get("db_type")
     return _DB_TYPE
+
+
+def test_db_connection(db_type: str = None, config: Dict[str, Any] = None) -> bool:
+    """
+    测试数据库连接是否可用
+
+    参数:
+        db_type: 数据库类型，如果为 None 则使用已配置的类型
+        config: 配置字典，如果为 None 则使用已配置的配置
+
+    返回:
+        True 如果连接成功
+
+    异常:
+        ImportError: 缺少数据库驱动
+        ConnectionError: 连接失败
+    """
+    # 使用已配置的参数或传入的参数
+    if db_type is None:
+        if _EXTERNAL_DB_CONFIG is not None:
+            db_type = _EXTERNAL_DB_CONFIG.get("db_type")
+            config = _EXTERNAL_DB_CONFIG.get("config", {})
+        else:
+            db_type = _DB_TYPE
+            config = {}
+
+    if not db_type:
+        raise ValueError("未配置数据库类型")
+
+    print(f"[DB][INFO] 正在测试 {db_type} 数据库连接...")
+
+    try:
+        if db_type == "oracle":
+            conn = _connect_oracle(config)
+            conn.close()
+        elif db_type == "mysql":
+            conn = _connect_mysql(config)
+            conn.close()
+        elif db_type == "hive":
+            conn = _connect_hive(config)
+            conn.close()
+        else:
+            raise ValueError(f"不支持的数据库类型: {db_type}")
+
+        print(f"[DB][INFO] ✓ {db_type.upper()} 数据库连接测试成功")
+        return True
+
+    except ImportError as e:
+        error_msg = f"""数据库驱动未安装: {e}
+
+请安装对应驱动:
+  Oracle: pip install cx_Oracle
+  MySQL:  pip install pymysql
+  Hive:   pip install pyhive sasl thrift
+"""
+        raise ImportError(error_msg)
+
+    except Exception as e:
+        error_msg = f"""数据库连接失败: {e}
+
+请检查配置是否正确:
+  - 主机地址和端口是否可达
+  - 用户名和密码是否正确
+  - 数据库/服务名是否正确
+  - 网络防火墙是否开放
+"""
+        raise ConnectionError(error_msg)
 
 
 # ============================================================================
