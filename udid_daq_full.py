@@ -62,7 +62,11 @@ def main() -> None:
     ensure_download_dir()
 
     # 创建下载器（全量数据强制 CSV 输出）
-    downloader = UDIDownloader("full", "csv", args.db)
+    try:
+        downloader = UDIDownloader("full", "csv", args.db)
+    except ValueError as e:
+        print(f"\n[ERROR] {e}")
+        return
 
     # 解析 RSS
     items = downloader.parse_rss()

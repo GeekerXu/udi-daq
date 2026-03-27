@@ -79,7 +79,12 @@ def main() -> None:
 
     # 创建下载器
     output_format = "excel" if args.excel else "csv"
-    downloader = UDIDownloader("weekly", output_format, args.db)
+
+    try:
+        downloader = UDIDownloader("weekly", output_format, args.db)
+    except ValueError as e:
+        print(f"\n[ERROR] {e}")
+        return
 
     # 解析 RSS
     items = downloader.parse_rss()

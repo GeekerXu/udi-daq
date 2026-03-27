@@ -99,11 +99,9 @@ class UDIDownloader:
         self._on_data_callback: Optional[Callable] = None
 
         # 设置数据库配置（如果指定）
-        # set_db_config 会验证配置是否完整，不完整时返回 False
+        # 配置不完整时会抛出 ValueError
         if db_type:
-            if not set_db_config(db_type, {}):
-                # 配置不完整，不启用数据库
-                pass
+            set_db_config(db_type, {})
 
     @property
     def items(self) -> List[Dict[str, Any]]:

@@ -52,36 +52,50 @@ def set_db_config(db_type: str, config: Dict[str, Any]) -> bool:
 
     返回:
         True 如果配置有效，False 如果配置不完整
+
+    异常:
+        ValueError: 配置不完整时抛出（当 strict=True 时）
     """
     global _EXTERNAL_DB_CONFIG, _DB_ENABLED, _DB_TYPE
 
     allowed_types = ("oracle", "mysql", "hive")
 
     if db_type not in allowed_types:
-        print(f"[DB][ERROR] 无效的数据库类型: {db_type}")
-        return False
+        raise ValueError(f"无效的数据库类型: {db_type}")
 
     if not isinstance(config, dict):
-        print("[DB][ERROR] 配置应为字典类型")
-        return False
+        raise ValueError("配置应为字典类型")
 
     # 检查是否有必要的配置信息（环境变量或传入的配置）
-    has_config = _check_db_config_available(db_type, config)
+    has_config, missing = _check_db_config_available(db_type, config)
 
     if not has_config:
-        print(f"[DB][ERROR] 数据库配置不完整！")
-        print(f"[DB][INFO] 请通过环境变量设置 {db_type.upper()} 连接信息:")
+        error_msg = f"""数据库配置不完整！
+
+请通过环境变量设置 {db_type.upper()} 连接信息:
+"""
         if db_type == "oracle":
-            print("  UDI_ORACLE_HOST, UDI_ORACLE_PORT, UDI_ORACLE_SERVICE")
-            print("  UDI_ORACLE_USER, UDI_ORACLE_PASSWORD")
+            error_msg += """  export UDI_ORACLE_HOST=localhost
+  export UDI_ORACLE_PORT=1521
+  export UDI_ORACLE_SERVICE=ORCL
+  export UDI_ORACLE_USER=udi_user
+  export UDI_ORACLE_PASSWORD=your_password
+"""
         elif db_type == "mysql":
-            print("  UDI_MYSQL_HOST, UDI_MYSQL_PORT, UDI_MYSQL_DATABASE")
-            print("  UDI_MYSQL_USER, UDI_MYSQL_PASSWORD")
+            error_msg += """  export UDI_MYSQL_HOST=localhost
+  export UDI_MYSQL_PORT=3306
+  export UDI_MYSQL_DATABASE=udi_db
+  export UDI_MYSQL_USER=udi_user
+  export UDI_MYSQL_PASSWORD=your_password
+"""
         elif db_type == "hive":
-            print("  UDI_HIVE_HOST, UDI_HIVE_PORT, UDI_HIVE_DATABASE")
-            print("  UDI_HIVE_USER, UDI_HIVE_PASSWORD")
-        print("[DB][INFO] 将保存到本地文件而不是数据库")
-        return False
+            error_msg += """  export UDI_HIVE_HOST=localhost
+  export UDI_HIVE_PORT=10000
+  export UDI_HIVE_DATABASE=udi_db
+  export UDI_HIVE_USER=udi_user
+  export UDI_HIVE_PASSWORD=your_password
+"""
+        raise ValueError(error_msg)
 
     _EXTERNAL_DB_CONFIG = {"db_type": db_type, "config": config}
     _DB_ENABLED = db_type
@@ -91,7 +105,7 @@ def set_db_config(db_type: str, config: Dict[str, Any]) -> bool:
     return True
 
 
-def _check_db_config_available(db_type: str, config: Dict[str, Any]) -> bool:
+def _check_db_config_available(db_type: str, config: Dict[str, Any]) -> tuple:
     """
     检查数据库配置是否完整
 
@@ -100,26 +114,47 @@ def _check_db_config_available(db_type: str, config: Dict[str, Any]) -> bool:
         config: 配置字典
 
     返回:
-        True 如果有足够的配置信息
+        (bool, list): (是否有足够配置, 缺少的配置项列表)
     """
+    missing = []
+
     if db_type == "oracle":
-        # 至少需要 host 和 user
         host = config.get("host") or os.environ.get("UDI_ORACLE_HOST")
         user = config.get("user") or os.environ.get("UDI_ORACLE_USER")
-        return bool(host and user)
+        password = config.get("password") or os.environ.get("UDI_ORACLE_PASSWORD")
+        if not host:
+            missing.append("UDI_ORACLE_HOST")
+        if not user:
+            missing.append("UDI_ORACLE_USER")
+        if not password:
+            missing.append("UDI_ORACLE_PASSWORD")
+        return (len(missing) == 0, missing)
 
     elif db_type == "mysql":
         host = config.get("host") or os.environ.get("UDI_MYSQL_HOST")
         user = config.get("user") or os.environ.get("UDI_MYSQL_USER")
+        password = config.get("password") or os.environ.get("UDI_MYSQL_PASSWORD")
         database = config.get("database") or os.environ.get("UDI_MYSQL_DATABASE")
-        return bool(host and user and database)
+        if not host:
+            missing.append("UDI_MYSQL_HOST")
+        if not user:
+            missing.append("UDI_MYSQL_USER")
+        if not password:
+            missing.append("UDI_MYSQL_PASSWORD")
+        if not database:
+            missing.append("UDI_MYSQL_DATABASE")
+        return (len(missing) == 0, missing)
 
     elif db_type == "hive":
         host = config.get("host") or os.environ.get("UDI_HIVE_HOST")
         database = config.get("database") or os.environ.get("UDI_HIVE_DATABASE")
-        return bool(host and database)
+        if not host:
+            missing.append("UDI_HIVE_HOST")
+        if not database:
+            missing.append("UDI_HIVE_DATABASE")
+        return (len(missing) == 0, missing)
 
-    return False
+    return (False, ["未知数据库类型"])
 
 
 def is_database_enabled() -> bool:
