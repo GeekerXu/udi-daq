@@ -37,3 +37,4 @@ Thumbs.db
 
 # Database config (contains passwords)
 db_config.ini
+dist_windows/

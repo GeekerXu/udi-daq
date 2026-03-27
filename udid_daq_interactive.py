@@ -54,8 +54,8 @@ class UDIInteractiveMenu:
     """UDI 数据下载交互式菜单"""
 
     def __init__(self):
-        self.data_type = "full"
-        self.data_type_name = "全量"
+        self.data_type = "daily"
+        self.data_type_name = "日度"
         self.output_format = "csv"
         self.downloader = None
         self.running = True
@@ -84,10 +84,10 @@ class UDIInteractiveMenu:
         self.print_current_settings()
         print("请选择操作:")
         print()
-        print("  [1] 查看可用版本")
-        print("  [2] 下载数据")
-        print("  [3] 切换数据类型")
-        print("  [4] 切换输出格式")
+        print("  [1] 切换数据类型")
+        print("  [2] 选择输出格式")
+        print("  [3] 查看可用版本")
+        print("  [4] 下载数据")
         print("  [0] 退出")
         print()
 
@@ -329,13 +329,13 @@ class UDIInteractiveMenu:
             choice = self.get_input("请输入选项 [0-4]: ")
 
             if choice == "1":
-                self.list_versions()
-            elif choice == "2":
-                self.download_data()
-            elif choice == "3":
                 self.select_data_type()
-            elif choice == "4":
+            elif choice == "2":
                 self.select_output_format()
+            elif choice == "3":
+                self.list_versions()
+            elif choice == "4":
+                self.download_data()
             elif choice == "0":
                 self.running = False
                 self.clear_screen()

@@ -23,25 +23,22 @@ jobs:
           python-version: '3.10'
 
       - name: Install dependencies
-        run: pip install pyinstaller feedparser requests pandas openpyxl
+        run: pip install pyinstaller feedparser requests pandas openpyxl tqdm
 
       - name: Build executables
         run: |
           pyinstaller --onefile --name udid_daq_daily udid_daq_daily.py
           pyinstaller --onefile --name udid_daq_weekly udid_daq_weekly.py
           pyinstaller --onefile --name udid_daq_monthly udid_daq_monthly.py
-          pyinstaller --onefile --name udid_daq_all udid_daq_all.py
           pyinstaller --onefile --name udid_daq_full udid_daq_full.py
           pyinstaller --onefile --name udid_daq_interactive udid_daq_interactive.py
 
-      - name: Prepare Linux binaries with .bin suffix
+      - name: Prepare Linux binaries
         run: |
           mkdir -p dist_linux
-          # Add .bin suffix to Linux executables for clear distinction from Windows
           cp dist/udid_daq_daily dist_linux/udid_daq_daily-linux-x64.bin
           cp dist/udid_daq_weekly dist_linux/udid_daq_weekly-linux-x64.bin
           cp dist/udid_daq_monthly dist_linux/udid_daq_monthly-linux-x64.bin
-          cp dist/udid_daq_all dist_linux/udid_daq_all-linux-x64.bin
           cp dist/udid_daq_full dist_linux/udid_daq_full-linux-x64.bin
           cp dist/udid_daq_interactive dist_linux/udid_daq_interactive-linux-x64.bin
           chmod +x dist_linux/*
