@@ -42,13 +42,16 @@ _EXTERNAL_DB_CONFIG: Optional[Dict[str, Any]] = None
 # ============================================================================
 # 配置函数
 # ============================================================================
-def set_db_config(db_type: str, config: Dict[str, Any]) -> None:
+def set_db_config(db_type: str, config: Dict[str, Any]) -> bool:
     """
     设置数据库配置
 
     参数:
         db_type: 数据库类型 (oracle/mysql/hive)
         config: 配置字典，包含 host, port, service/database, user, password 等字段
+
+    返回:
+        True 如果配置有效，False 如果配置不完整
     """
     global _EXTERNAL_DB_CONFIG, _DB_ENABLED, _DB_TYPE
 
@@ -56,17 +59,67 @@ def set_db_config(db_type: str, config: Dict[str, Any]) -> None:
 
     if db_type not in allowed_types:
         print(f"[DB][ERROR] 无效的数据库类型: {db_type}")
-        return
+        return False
 
     if not isinstance(config, dict):
         print("[DB][ERROR] 配置应为字典类型")
-        return
+        return False
+
+    # 检查是否有必要的配置信息（环境变量或传入的配置）
+    has_config = _check_db_config_available(db_type, config)
+
+    if not has_config:
+        print(f"[DB][ERROR] 数据库配置不完整！")
+        print(f"[DB][INFO] 请通过环境变量设置 {db_type.upper()} 连接信息:")
+        if db_type == "oracle":
+            print("  UDI_ORACLE_HOST, UDI_ORACLE_PORT, UDI_ORACLE_SERVICE")
+            print("  UDI_ORACLE_USER, UDI_ORACLE_PASSWORD")
+        elif db_type == "mysql":
+            print("  UDI_MYSQL_HOST, UDI_MYSQL_PORT, UDI_MYSQL_DATABASE")
+            print("  UDI_MYSQL_USER, UDI_MYSQL_PASSWORD")
+        elif db_type == "hive":
+            print("  UDI_HIVE_HOST, UDI_HIVE_PORT, UDI_HIVE_DATABASE")
+            print("  UDI_HIVE_USER, UDI_HIVE_PASSWORD")
+        print("[DB][INFO] 将保存到本地文件而不是数据库")
+        return False
 
     _EXTERNAL_DB_CONFIG = {"db_type": db_type, "config": config}
     _DB_ENABLED = db_type
     _DB_TYPE = db_type
 
     print(f"[DB][INFO] 数据库配置已设置: {db_type}")
+    return True
+
+
+def _check_db_config_available(db_type: str, config: Dict[str, Any]) -> bool:
+    """
+    检查数据库配置是否完整
+
+    参数:
+        db_type: 数据库类型
+        config: 配置字典
+
+    返回:
+        True 如果有足够的配置信息
+    """
+    if db_type == "oracle":
+        # 至少需要 host 和 user
+        host = config.get("host") or os.environ.get("UDI_ORACLE_HOST")
+        user = config.get("user") or os.environ.get("UDI_ORACLE_USER")
+        return bool(host and user)
+
+    elif db_type == "mysql":
+        host = config.get("host") or os.environ.get("UDI_MYSQL_HOST")
+        user = config.get("user") or os.environ.get("UDI_MYSQL_USER")
+        database = config.get("database") or os.environ.get("UDI_MYSQL_DATABASE")
+        return bool(host and user and database)
+
+    elif db_type == "hive":
+        host = config.get("host") or os.environ.get("UDI_HIVE_HOST")
+        database = config.get("database") or os.environ.get("UDI_HIVE_DATABASE")
+        return bool(host and database)
+
+    return False
 
 
 def is_database_enabled() -> bool:
