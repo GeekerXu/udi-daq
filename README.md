@@ -63,35 +63,35 @@ udid_daq_monthly.exe -m 202601
 
 ## Linux 可执行文件下载
 
-无需安装Python，直接下载AppImage文件即可运行！
+无需安装Python，直接下载可执行文件即可运行！
 
 ### 下载地址
 
-前往 [Releases 页面](https://github.com/geekerxu/udid_daq/releases) 下载最新版本的AppImage文件：
+前往 [Releases 页面](https://github.com/geekerxu/udid_daq/releases) 下载最新版本的Linux可执行文件：
 
 | 文件名 | 说明 | 使用场景 |
 |--------|------|----------|
-| `udid_daq_interactive-*_linux.AppImage` | 交互式图形界面 | 推荐使用，双击即可运行 |
-| `udid_daq_daily-*_linux.AppImage` | 日度数据命令行工具 | 下载每日增量数据 |
-| `udid_daq_monthly-*_linux.AppImage` | 月度数据命令行工具 | 下载并合并月度数据 |
+| `udid_daq_interactive` | 交互式图形界面 | 推荐使用，双击即可运行 |
+| `udid_daq_daily` | 日度数据命令行工具 | 下载每日增量数据 |
+| `udid_daq_monthly` | 月度数据命令行工具 | 下载并合并月度数据 |
 
-### AppImage 使用
+### Linux 使用
 
 ```bash
 # 1. 下载后添加执行权限
-chmod +x udid_daq_interactive-v1.0.0-linux.AppImage
+chmod +x udid_daq_interactive
 
 # 2. 直接运行（交互式版本）
-./udid_daq_interactive-v1.0.0-linux.AppImage
+./udid_daq_interactive
 
 # 命令行版本示例
-chmod +x udid_daq_daily-v1.0.0-linux.AppImage
-./udid_daq_daily-v1.0.0-linux.AppImage -l  # 列出可用日期
+chmod +x udid_daq_daily
+./udid_daq_daily -l  # 列出可用日期
 ```
 
 ### Linux 版本构建说明
 
-Linux AppImage 通过 GitHub Actions CI 自动构建。每次发布新版本标签时会自动构建并上传。
+Linux 可执行文件通过 GitHub Actions CI 自动构建。每次发布新版本标签时会自动构建并上传。
 
 如需手动触发构建：
 1. 进入项目的 Actions 页面
@@ -100,8 +100,8 @@ Linux AppImage 通过 GitHub Actions CI 自动构建。每次发布新版本标�
 
 ### 注意事项
 
-- AppImage 兼容大多数主流 Linux 发行版（Ubuntu, Debian, Fedora, Arch 等）
-- 首次运行可能需要安装 fuse（某些发行版）
+- Linux 二进制文件兼容大多数主流发行版（Ubuntu, Debian, Fedora, Arch 等）
+- 依赖 glibc 2.17+（大多数现代Linux发行版都满足）
 - 数据下载后保存在用户主目录的 `downloads` 或 `downloads_monthly` 文件夹中
 
 ---

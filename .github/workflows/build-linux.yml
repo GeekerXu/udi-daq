@@ -28,43 +28,20 @@ jobs:
           pyinstaller --onefile --name udid_daq_interactive udid_daq_interactive.py
           pyinstaller --onefile --name udid_daq_monthly udid_daq_monthly.py
 
-      - name: Create AppDir structure
+      - name: Prepare binaries
         run: |
-          for app in interactive daily monthly; do
-            mkdir -p AppDir_${app}/usr/bin
-          done
-          cp dist/udid_daq_interactive AppDir_interactive/usr/bin/
-          cp dist/udid_daq_daily AppDir_daily/usr/bin/
-          cp dist/udid_daq_monthly AppDir_monthly/usr/bin/
-          chmod +x AppDir_interactive/usr/bin/* AppDir_daily/usr/bin/* AppDir_monthly/usr/bin/*
+          mkdir -p dist_linux
+          cp dist/udid_daq_interactive dist_linux/
+          cp dist/udid_daq_daily dist_linux/
+          cp dist/udid_daq_monthly dist_linux/
+          chmod +x dist_linux/*
 
-      - name: Create desktop files
-        run: |
-          printf '[Desktop Entry]\nName=UDID Interactive\nComment=UDI Data Download Tool\nExec=udid_daq_interactive\nIcon=application\nType=Application\n' > AppDir_interactive/udid_daq_interactive.desktop
-          printf '[Desktop Entry]\nName=UDID Daily\nComment=UDI Data Download Tool\nExec=udid_daq_daily\nIcon=application\nType=Application\n' > AppDir_daily/udid_daq_daily.desktop
-          printf '[Desktop Entry]\nName=UDID Monthly\nComment=UDI Data Download Tool\nExec=udid_daq_monthly\nIcon=application\nType=Application\n' > AppDir_monthly/udid_daq_monthly.desktop
-
-      - name: Download AppImage toolkit
-        run: |
-          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/AppRun -O AppRun
-          chmod +x AppRun
-          cp AppRun AppDir_interactive/
-          cp AppRun AppDir_daily/
-          cp AppRun AppDir_monthly/
-          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool.AppImage
-          chmod +x appimagetool.AppImage
-
-      - name: Build AppImage
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/}
-          ./appimagetool.AppImage AppDir_interactive udid_daq_interactive-${VERSION}-linux.AppImage
-          ./appimagetool.AppImage AppDir_daily udid_daq_daily-${VERSION}-linux.AppImage
-          ./appimagetool.AppImage AppDir_monthly udid_daq_monthly-${VERSION}-linux.AppImage
-
-      - name: Upload to Release
+      - name: Upload Release Assets
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: '*-linux.AppImage'
+          files: |
+            dist_linux/*
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
