@@ -498,17 +498,38 @@ class UDIDownloader:
             else:
                 merged_df = pd.concat([merged_df] + batch, ignore_index=True)
 
-        # 排序（带进度）
+        # 排序（带动画进度）
         if merged_df is not None and "deviceRecordKey" in merged_df.columns:
+            import threading
+
             total_records = len(merged_df)
             print(f"\n[排序] 按 deviceRecordKey 排序 {total_records:,} 条记录...")
-            with tqdm(
-                total=100, desc="排序进度", bar_format="{l_bar}{bar}| {n_fmt}%"
-            ) as pbar:
-                # 排序是原子操作，分阶段显示进度
-                pbar.update(10)
+
+            sort_done = threading.Event()
+
+            def show_sort_progress():
+                spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+                idx = 0
+                while not sort_done.is_set():
+                    elapsed = time.time() - start_time
+                    print(
+                        f"\r  {spinner[idx % len(spinner)]} 正在排序... {elapsed:.1f}s",
+                        end="",
+                        flush=True,
+                    )
+                    idx += 1
+                    time.sleep(0.1)
+
+            progress_thread = threading.Thread(target=show_sort_progress)
+            progress_thread.start()
+
+            try:
                 merged_df = merged_df.sort_values("deviceRecordKey")
-                pbar.update(90)
+            finally:
+                sort_done.set()
+                progress_thread.join()
+
+            print(f"\r  ✓ 排序完成                                   ")
 
         elapsed = time.time() - start_time
         total_records = len(merged_df) if merged_df is not None else 0
@@ -544,6 +565,7 @@ class UDIDownloader:
     def _save_to_file(self, df: pd.DataFrame, identifier: str) -> str:
         """保存数据到本地文件（带进度条）"""
         import time
+        import threading
         from tqdm import tqdm
 
         os.makedirs(DOWNLOAD_DIR, exist_ok=True)
@@ -559,13 +581,32 @@ class UDIDownloader:
             filepath = os.path.join(DOWNLOAD_DIR, filename)
             print(f"[保存] 格式: Excel, 文件: {filename}")
 
-            # Excel写入进度
-            with tqdm(
-                total=100, desc="写入进度", bar_format="{l_bar}{bar}| {n_fmt}%"
-            ) as pbar:
-                pbar.update(20)
+            # Excel写入使用动画进度条
+            write_done = threading.Event()
+
+            def show_progress():
+                spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+                idx = 0
+                while not write_done.is_set():
+                    elapsed = time.time() - start_time
+                    print(
+                        f"\r  {spinner[idx % len(spinner)]} 正在写入 Excel... {elapsed:.1f}s",
+                        end="",
+                        flush=True,
+                    )
+                    idx += 1
+                    time.sleep(0.1)
+
+            progress_thread = threading.Thread(target=show_progress)
+            progress_thread.start()
+
+            try:
                 df.to_excel(filepath, index=False, engine="openpyxl")
-                pbar.update(80)
+            finally:
+                write_done.set()
+                progress_thread.join()
+
+            print(f"\r  ✓ Excel 写入完成                              ")
         else:
             filename = f"udid_{self.data_type}_{identifier}_{timestamp}.csv"
             filepath = os.path.join(DOWNLOAD_DIR, filename)
