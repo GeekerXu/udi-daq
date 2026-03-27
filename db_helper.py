@@ -12,16 +12,21 @@ UDI 数据库辅助模块
     - is_database_enabled: 检查数据库是否启用
     - get_db_type: 获取当前数据库类型
 
+配置方式:
+    1. 配置文件（推荐）: 在当前目录创建 db_config.ini
+    2. 环境变量: 设置 UDI_{DB_TYPE}_{PARAM} 环境变量
+
 作者: geekerxu
-版本: 3.0.0
+版本: 3.2.0
 """
 
 # ============================================================================
 # 标准库导入
 # ============================================================================
+import configparser
 import os
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 # ============================================================================
 # 第三方库导入
@@ -29,14 +34,118 @@ from typing import Any, Dict, Optional
 import pandas as pd
 
 # ============================================================================
+# 常量定义
+# ============================================================================
+CONFIG_FILE = "db_config.ini"
+CONFIG_FILE_EXAMPLE = "db_config.ini.example"
+
+# ============================================================================
 # 全局变量
 # ============================================================================
-# 从环境变量读取数据库配置
-_DB_ENABLED = os.environ.get("UDI_DB_ENABLED", "").lower()
-_DB_TYPE = _DB_ENABLED if _DB_ENABLED in ("oracle", "mysql", "hive") else None
-
-# 外部传入的数据库配置
 _EXTERNAL_DB_CONFIG: Optional[Dict[str, Any]] = None
+_DB_TYPE: Optional[str] = None
+
+
+# ============================================================================
+# 配置文件读取
+# ============================================================================
+def _load_config_from_file(db_type: str) -> Dict[str, Any]:
+    """
+    从配置文件加载数据库配置
+
+    参数:
+        db_type: 数据库类型 (oracle/mysql/hive)
+
+    返回:
+        配置字典，如果文件不存在或无配置则返回空字典
+    """
+    config = configparser.ConfigParser()
+
+    # 查找配置文件
+    config_path = None
+    for path in [CONFIG_FILE, CONFIG_FILE_EXAMPLE]:
+        if os.path.exists(path):
+            config_path = path
+            break
+
+    if not config_path:
+        return {}
+
+    try:
+        config.read(config_path, encoding="utf-8")
+
+        if db_type not in config:
+            return {}
+
+        section = config[db_type]
+        result = {}
+
+        for key in section:
+            value = section.get(key, "").strip()
+            if value:
+                result[key] = value
+
+        return result
+    except Exception:
+        return {}
+
+
+def _merge_config(db_type: str, explicit_config: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    合并配置：配置文件 + 显式传入 + 环境变量
+
+    优先级: 显式传入 > 配置文件 > 环境变量
+
+    参数:
+        db_type: 数据库类型
+        explicit_config: 显式传入的配置
+
+    返回:
+        合并后的配置字典
+    """
+    # 1. 从配置文件加载
+    file_config = _load_config_from_file(db_type)
+
+    # 2. 从环境变量加载
+    env_config = _load_config_from_env(db_type)
+
+    # 3. 合并（优先级：显式 > 文件 > 环境变量）
+    merged = {}
+    merged.update(env_config)  # 最低优先级
+    merged.update(file_config)  # 中等优先级
+    merged.update(explicit_config)  # 最高优先级
+
+    return merged
+
+
+def _load_config_from_env(db_type: str) -> Dict[str, Any]:
+    """
+    从环境变量加载数据库配置
+
+    参数:
+        db_type: 数据库类型
+
+    返回:
+        配置字典
+    """
+    prefix = f"UDI_{db_type.upper()}_"
+    result = {}
+
+    mapping = {
+        "HOST": "host",
+        "PORT": "port",
+        "SERVICE": "service",
+        "DATABASE": "database",
+        "USER": "user",
+        "PASSWORD": "password",
+    }
+
+    for env_key, config_key in mapping.items():
+        value = os.environ.get(f"{prefix}{env_key}", "").strip()
+        if value:
+            result[config_key] = value
+
+    return result
 
 
 # ============================================================================
@@ -46,17 +155,22 @@ def set_db_config(db_type: str, config: Dict[str, Any]) -> bool:
     """
     设置数据库配置
 
+    配置来源优先级:
+    1. 显式传入的 config 参数
+    2. db_config.ini 配置文件
+    3. 环境变量
+
     参数:
         db_type: 数据库类型 (oracle/mysql/hive)
-        config: 配置字典，包含 host, port, service/database, user, password 等字段
+        config: 配置字典（可选，用于覆盖默认配置）
 
     返回:
-        True 如果配置有效，False 如果配置不完整
+        True 如果配置有效
 
     异常:
-        ValueError: 配置不完整时抛出（当 strict=True 时）
+        ValueError: 配置不完整时抛出
     """
-    global _EXTERNAL_DB_CONFIG, _DB_ENABLED, _DB_TYPE
+    global _EXTERNAL_DB_CONFIG, _DB_TYPE
 
     allowed_types = ("oracle", "mysql", "hive")
 
@@ -66,13 +180,28 @@ def set_db_config(db_type: str, config: Dict[str, Any]) -> bool:
     if not isinstance(config, dict):
         raise ValueError("配置应为字典类型")
 
-    # 检查是否有必要的配置信息（环境变量或传入的配置）
-    has_config, missing = _check_db_config_available(db_type, config)
+    # 合并配置
+    merged_config = _merge_config(db_type, config)
+
+    # 检查配置是否完整
+    has_config, missing = _check_db_config_available(db_type, merged_config)
 
     if not has_config:
-        error_msg = f"""数据库配置不完整！
+        error_msg = f"""数据库配置不完整！缺少: {", ".join(missing)}
 
-请通过环境变量设置 {db_type.upper()} 连接信息:
+请通过以下方式之一配置数据库连接:
+
+方式一：配置文件（推荐）
+  创建 db_config.ini 文件，内容如下：
+  
+  [{db_type}]
+  host = localhost
+  port = 1521
+  user = your_username
+  password = your_password
+  {"service = ORCL" if db_type == "oracle" else "database = udi_db"}
+
+方式二：环境变量
 """
         if db_type == "oracle":
             error_msg += """  export UDI_ORACLE_HOST=localhost
@@ -97,15 +226,16 @@ def set_db_config(db_type: str, config: Dict[str, Any]) -> bool:
 """
         raise ValueError(error_msg)
 
-    _EXTERNAL_DB_CONFIG = {"db_type": db_type, "config": config}
-    _DB_ENABLED = db_type
+    _EXTERNAL_DB_CONFIG = {"db_type": db_type, "config": merged_config}
     _DB_TYPE = db_type
 
     print(f"[DB][INFO] 数据库配置已设置: {db_type}")
     return True
 
 
-def _check_db_config_available(db_type: str, config: Dict[str, Any]) -> tuple:
+def _check_db_config_available(
+    db_type: str, config: Dict[str, Any]
+) -> Tuple[bool, list]:
     """
     检查数据库配置是否完整
 
@@ -119,44 +249,39 @@ def _check_db_config_available(db_type: str, config: Dict[str, Any]) -> tuple:
     missing = []
 
     if db_type == "oracle":
-        host = config.get("host") or os.environ.get("UDI_ORACLE_HOST")
-        user = config.get("user") or os.environ.get("UDI_ORACLE_USER")
-        password = config.get("password") or os.environ.get("UDI_ORACLE_PASSWORD")
-        if not host:
-            missing.append("UDI_ORACLE_HOST")
-        if not user:
-            missing.append("UDI_ORACLE_USER")
-        if not password:
-            missing.append("UDI_ORACLE_PASSWORD")
+        if not config.get("host"):
+            missing.append("host")
+        if not config.get("user"):
+            missing.append("user")
+        if not config.get("password"):
+            missing.append("password")
         return (len(missing) == 0, missing)
 
     elif db_type == "mysql":
-        host = config.get("host") or os.environ.get("UDI_MYSQL_HOST")
-        user = config.get("user") or os.environ.get("UDI_MYSQL_USER")
-        password = config.get("password") or os.environ.get("UDI_MYSQL_PASSWORD")
-        database = config.get("database") or os.environ.get("UDI_MYSQL_DATABASE")
-        if not host:
-            missing.append("UDI_MYSQL_HOST")
-        if not user:
-            missing.append("UDI_MYSQL_USER")
-        if not password:
-            missing.append("UDI_MYSQL_PASSWORD")
-        if not database:
-            missing.append("UDI_MYSQL_DATABASE")
+        if not config.get("host"):
+            missing.append("host")
+        if not config.get("user"):
+            missing.append("user")
+        if not config.get("password"):
+            missing.append("password")
+        if not config.get("database"):
+            missing.append("database")
         return (len(missing) == 0, missing)
 
     elif db_type == "hive":
-        host = config.get("host") or os.environ.get("UDI_HIVE_HOST")
-        database = config.get("database") or os.environ.get("UDI_HIVE_DATABASE")
-        if not host:
-            missing.append("UDI_HIVE_HOST")
-        if not database:
-            missing.append("UDI_HIVE_DATABASE")
+        if not config.get("host"):
+            missing.append("host")
+        if not config.get("database"):
+            missing.append("database")
         return (len(missing) == 0, missing)
 
+    # 未知数据库类型
     return (False, ["未知数据库类型"])
 
 
+# ============================================================================
+# 连接检查函数
+# ============================================================================
 def is_database_enabled() -> bool:
     """
     检查数据库写入是否启用

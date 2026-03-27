@@ -1,0 +1,30 @@
+# UDI 数据库配置文件
+# =====================
+# 
+# 使用方法：
+# 1. 复制此文件为 db_config.ini（去掉 .example 后缀）
+# 2. 填写对应数据库的连接信息
+# 3. 运行脚本时指定 --db 参数
+#
+# 注意：db_config.ini 已在 .gitignore 中，不会被提交到 Git
+
+[oracle]
+host = localhost
+port = 1521
+service = ORCL
+user = udi_user
+password = your_password
+
+[mysql]
+host = localhost
+port = 3306
+database = udi_db
+user = udi_user
+password = your_password
+
+[hive]
+host = localhost
+port = 10000
+database = udi_db
+user = udi_user
+password = your_password

@@ -34,3 +34,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Database config (contains passwords)
+db_config.ini
