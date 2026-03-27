@@ -322,7 +322,7 @@ class UDIDownloader:
     # 流式处理（内存优化 + 并行加速）
     # ------------------------------------------------------------------------
     def extract_and_save_streaming(
-        self, zip_content: bytes, identifier: str, max_workers: int = 4
+        self, zip_content: bytes, identifier: str, max_workers: int = 2
     ) -> Optional[str]:
         """流式解压 ZIP 并直接写入文件（内存优化 + 并行加速）"""
         import time

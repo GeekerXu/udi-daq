@@ -45,7 +45,7 @@ class UDIInteractiveMenu:
         self.data_type = "full"
         self.output_format = "csv"
         self.db_type = None
-        self.max_workers = 4
+        self.max_workers = 2
         self.running = True
 
     def clear_screen(self):
