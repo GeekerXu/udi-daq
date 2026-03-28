@@ -72,19 +72,72 @@ python udid_daq_interactive.py
 3. 查看可用版本 → 确认有哪些数据可下载
 4. 下载数据 → 选择具体版本下载
 
-### 方式二：可执行文件
+### 方式二：可执行文件（无需安装 Python）
+
+从 [Releases](https://github.com/GeekerXu/udi-daq/releases) 页面下载对应平台的可执行文件。
+
+#### 可执行文件说明
+
+| 文件名 | 功能 | 双击运行行为 |
+|--------|------|-------------|
+| `udid_daq_interactive-*.exe/bin` | 交互式界面 | 弹出菜单，手动选择操作 |
+| `udid_daq_daily-*.exe/bin` | 日度数据下载 | 自动下载最新日度数据，输出 CSV |
+| `udid_daq_weekly-*.exe/bin` | 周度数据下载 | 自动下载最新周度数据，输出 CSV |
+| `udid_daq_monthly-*.exe/bin` | 月度数据下载 | 自动下载最新月度数据，输出 CSV |
+| `udid_daq_full-*.exe/bin` | 全量数据下载 | 自动下载最新全量数据，输出 CSV |
+
+#### 使用方式
+
+**交互式版本（推荐）**：双击运行，通过菜单选择数据类型、输出格式、下载版本。
+
+**命令行版本**：
+- **双击运行**：自动下载最新数据，输出 CSV 格式到 `download/` 目录
+- **传参运行**：支持更多功能，需要在命令行中执行
 
 ```bash
-# Windows - 直接运行
-dist\udid_daq_windows.exe
+# Windows - 在 CMD 或 PowerShell 中运行
+udid_daq_daily-windows-x64.exe -l              # 列出可用日期
+udid_daq_daily-windows-x64.exe -d 20260326     # 下载指定日期
+udid_daq_daily-windows-x64.exe -a              # 下载所有可用日期
+udid_daq_daily-windows-x64.exe --excel         # 下载最新，输出 Excel
 
-# Linux
-./dist/udid_daq_linux
+udid_daq_weekly-windows-x64.exe -l             # 列出可用周期
+udid_daq_weekly-windows-x64.exe -d 20260322    # 下载指定周期
+udid_daq_weekly-windows-x64.exe -a             # 下载所有可用周期
+udid_daq_weekly-windows-x64.exe --excel        # 下载最新，输出 Excel
+
+udid_daq_monthly-windows-x64.exe -l            # 列出可用月份
+udid_daq_monthly-windows-x64.exe -m 202603     # 下载指定月份
+udid_daq_monthly-windows-x64.exe -a            # 下载所有可用月份
+udid_daq_monthly-windows-x64.exe --excel       # 下载最新，输出 Excel
+
+udid_daq_full-windows-x64.exe -l               # 列出可用版本（全量仅支持 CSV）
+
+# Linux - 在终端中运行
+chmod +x udid_daq_daily-linux-x64.bin          # 首次运行需添加执行权限
+./udid_daq_daily-linux-x64.bin -l              # 列出可用日期
+./udid_daq_daily-linux-x64.bin -d 20260326     # 下载指定日期
 ```
 
-### 方式三：命令行工具
+#### 快速使用提示
+
+| 需求 | 操作方式 |
+|------|----------|
+| 下载最新数据 | 双击对应的可执行文件 |
+| 选择数据类型/格式 | 使用交互式版本 `udid_daq_interactive` |
+| 查看可用版本 | 命令行执行 `xxx.exe -l` |
+| 下载指定日期 | 命令行执行 `xxx.exe -d YYYYMMDD` |
+| 输出 Excel | 命令行执行 `xxx.exe --excel` |
+| 下载全部数据 | 命令行执行 `xxx.exe -a` |
+
+### 方式三：Python 命令行脚本
+
+已安装 Python 环境的用户可直接运行源码：
 
 ```bash
+# 安装依赖
+pip install feedparser requests pandas openpyxl tqdm
+
 # 日度数据
 python udid_daq_daily.py              # 下载最新
 python udid_daq_daily.py -l           # 列出可用日期
@@ -97,12 +150,14 @@ python udid_daq_weekly.py              # 下载最新
 python udid_daq_weekly.py -l           # 列出可用周期
 python udid_daq_weekly.py -d 20260322  # 下载指定周期
 python udid_daq_weekly.py -a           # 下载全部
+python udid_daq_weekly.py --excel      # 输出 Excel
 
 # 月度数据
 python udid_daq_monthly.py             # 下载最新
 python udid_daq_monthly.py -l          # 列出可用月份
 python udid_daq_monthly.py -m 202603   # 下载指定月份
 python udid_daq_monthly.py -a          # 下载全部
+python udid_daq_monthly.py --excel     # 输出 Excel
 
 # 全量数据（仅支持 CSV）
 python udid_daq_full.py               # 下载最新全量
@@ -247,17 +302,21 @@ udid_{type}_{identifier}_{timestamp}.{ext}
 2. 启用数据库但写入失败 → 保存本地文件
 3. 未启用数据库 → 直接保存本地文件
 
-## 构建可执行文件
+## 高级用法
+
+### 自行编译可执行文件
+
+如需自行编译，可使用 PyInstaller：
 
 ```bash
 # 安装 PyInstaller
 pip install pyinstaller
 
-# Windows
-python -m PyInstaller --onefile --name udid_daq_windows udid_daq_interactive.py
+# 编译单个脚本
+pyinstaller --onefile --name udid_daq_daily udid_daq_daily.py
 
-# Linux
-python -m PyInstaller --onefile --name udid_daq_linux udid_daq_interactive.py
+# 编译交互式版本
+pyinstaller --onefile --name udid_daq_interactive udid_daq_interactive.py
 ```
 
 编译后的可执行文件位于 `dist/` 目录。
